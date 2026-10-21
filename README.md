@@ -44,9 +44,9 @@
 |---|---|
 | ![](img/web_day.png) | ![](img/web_night.png) |
 
-| VM легла | идёт vzdump |
-|---|---|
-| ![](img/web_vm.png) | ![](img/web_backup.png) |
+| VM легла | идёт vzdump | хост недоступен |
+|---|---|---|
+| ![](img/web_vm.png) | ![](img/web_backup.png) | ![](img/web_down.png) |
 
 Экранные формы OLED (эмуляция буфера дисплея):
 
