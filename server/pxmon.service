@@ -1,0 +1,12 @@
+[Unit]
+Description=pxmon - stats micro-API for OLED server monitor
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/pxmon.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

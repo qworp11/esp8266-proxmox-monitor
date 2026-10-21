@@ -1,0 +1,9 @@
+build/
+*.bin
+*.elf
+*.map
+ser_*.txt
+*.log
+__pycache__/
+*.zip
+.vscode/
