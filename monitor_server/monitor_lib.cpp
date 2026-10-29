@@ -155,6 +155,39 @@ struct Pupil {
 static Pupil eyeL = { 0, 0, 0, 0, PUPIL_R_BASE, PUPIL_R_BASE };
 static Pupil eyeR = { 0, 0, 0, 0, PUPIL_R_BASE, PUPIL_R_BASE };
 
+// ---- v3 living layer: ��㦨��, ᠪ����, ��堭�� ----
+static float svelL[3] = { 0, 0, 0 };   // ᪮��� ��㦨�� (px, py, pr) ���� ����
+static float svelR[3] = { 0, 0, 0 };   // �ࠢ� ����
+static float gAx = 0.0f, gAy = 0.0f;   // ����-ᠪ���� (ᬥ饭�� ��窠 �� ���ᮢ��)
+static int   gEhOff = 0;               // ��堭��: ᤢ�� ��� ���� �� y, -1..1
+static unsigned long exhaleUntil = 0;  // �����-�����祭�� / ��������
+static bool panicPrev = false;
+static bool sleepPrev = false;
+static unsigned long wakeUntil = 0;    // E|wake: �� ᯠ�� 2 ������
+
+static void sstep(float& x, float& v, float tgt, float k, float d, float dt) {
+  v += (k * (tgt - x) - d * v) * dt;
+  if (v > 80.0f) v = 80.0f; else if (v < -80.0f) v = -80.0f;
+  x += v * dt;
+}
+
+// v3: ��㦨���� ������� 楫�� + ����-ᠪ���� + ��堭�� (ࠧ � ����)
+static void v3Phase(float dt, float sacAmp) {
+  static float ph1 = 0.0f, ph2 = 0.0f, ph3 = 0.0f;
+  ph1 += dt * 2.0f * PI / 1.7f;  if (ph1 > 2 * PI) ph1 -= 2 * PI;
+  ph2 += dt * 2.0f * PI / 2.1f;  if (ph2 > 2 * PI) ph2 -= 2 * PI;
+  ph3 += dt * 2.0f * PI / 2.6f;  if (ph3 > 2 * PI) ph3 -= 2 * PI;
+  gAx = sacAmp * 0.6f * sinf(ph1);
+  gAy = sacAmp * 0.35f * sinf(ph2 + 1.2f);
+  gEhOff = (int)roundf(0.9f * sinf(ph3));
+  sstep(eyeL.px, svelL[0], eyeL.tx, 110.0f, 11.0f, dt);
+  sstep(eyeL.py, svelL[1], eyeL.ty, 110.0f, 11.0f, dt);
+  sstep(eyeL.pr, svelL[2], eyeL.tr, 90.0f, 12.0f, dt);
+  sstep(eyeR.px, svelR[0], eyeR.tx, 110.0f, 11.0f, dt);
+  sstep(eyeR.py, svelR[1], eyeR.ty, 110.0f, 11.0f, dt);
+  sstep(eyeR.pr, svelR[2], eyeR.tr, 90.0f, 12.0f, dt);
+}
+
 // поведение
 static uint8_t brows = 0;        // 0 обычная, 1 поднята, 2 сердитая
 static int lowerLid = 0;         // px прищура
@@ -464,14 +497,15 @@ static void thickLine(int x0, int y0, int x1, int y1, int t) {
 }
 
 static void drawEye(int ex, int ey, int eh, const Pupil& e, int lid, int lower) {
+  ey += gEhOff;                              // v3: ��堭��
   int rr = EYE_W / 2;                        // радиус капсулы
   if (rr > eh / 2) rr = eh / 2;
   const int cy0 = ey + eh / 2;
 
   // зрачок: центр со сглаживанием + жёсткий кламп внутри глаза
   int pr = (int)(e.pr + 0.5f);
-  int cx = (int)(ex + EYE_W / 2 + e.px + 0.5f);
-  int cy = (int)(cy0 + e.py + 0.5f);
+  int cx = (int)(ex + EYE_W / 2 + e.px + gAx + 0.5f);
+  int cy = (int)(cy0 + e.py + gAy + 0.5f);
   int cxMin = ex + pr + 2, cxMax = ex + EYE_W - pr - 2;
   int cyMin = ey + pr + 3, cyMax = ey + eh - pr - 3;
   if (cx < cxMin) cx = cxMin;
@@ -482,35 +516,35 @@ static void drawEye(int ex, int ey, int eh, const Pupil& e, int lid, int lower) 
   // белок
   display.fillRoundRect(ex, ey, EYE_W, eh, rr, SSD1306_WHITE);
   // зрачок + блик
-  display.fillCircle(cx, cy, pr, SSD1306_BLACK);
-  display.fillRect(cx - pr + 2, cy - pr + 2, 2, 2, SSD1306_WHITE);
+  display.fillCircle(cx, cy, pr, SSD1306_BLACK);   // v3: ᯫ�譮� ��箪, ��� �����
 
   // верхнее веко
   if (lid > 0) {
     int hw = lidHalfWidth(lid, rr);
     display.fillRect(ex + EYE_W / 2 - hw, ey, hw * 2, lid, SSD1306_WHITE);
-    display.fillRect(ex + EYE_W / 2 - hw, ey + lid - 1, hw * 2, 1, SSD1306_BLACK);
+    display.fillRect(ex + EYE_W / 2 - hw, ey + lid - 2, hw * 2, 2, SSD1306_BLACK);
   }
   // нижнее веко (прищур)
   if (lower > 0) {
     int hw = lidHalfWidth(lower, rr);
     display.fillRect(ex + EYE_W / 2 - hw, ey + eh - lower, hw * 2, lower, SSD1306_WHITE);
-    display.fillRect(ex + EYE_W / 2 - hw, ey + eh - lower, hw * 2, 1, SSD1306_BLACK);
+    display.fillRect(ex + EYE_W / 2 - hw, ey + eh - lower, hw * 2, 2, SSD1306_BLACK);
   }
   // контур поверх век восстанавливает дуги
   display.drawRoundRect(ex, ey, EYE_W, eh, rr, SSD1306_BLACK);
+  display.drawRoundRect(ex + 1, ey + 1, EYE_W - 2, eh - 2, (rr > 1) ? rr - 1 : 0, SSD1306_BLACK);   // v3: ������ 2px
 
   // брови
   // v2: бровь следует за глазом (ey-4); при ey<=12 это ровно BROW_Y - поведение v1 не меняется
   int by = ey - 4;
   if (by < BROW_Y) by = BROW_Y;
   if (brows == 1) {            // удивлённая/поднятая (только в спокойном режиме)
-    thickLine(ex + 2, by - 3, ex + EYE_W - 4, by - 5, 3);
+    thickLine(ex + 2, by - 3, ex + EYE_W - 4, by - 5, 2);
   } else if (brows == 2) {     // сердитая: наследает прямо на глаз сверху вниз к центру
-    if (ex < SCREEN_WIDTH / 2) thickLine(ex + 2, ey - 2, ex + EYE_W - 2, ey + 4, 3);
-    else                       thickLine(ex + 2, ey + 4, ex + EYE_W - 2, ey - 2, 3);
+    if (ex < SCREEN_WIDTH / 2) thickLine(ex + 2, ey - 2, ex + EYE_W - 2, ey + 4, 2);
+    else                       thickLine(ex + 2, ey + 4, ex + EYE_W - 2, ey - 2, 2);
   } else {                     // спокойная с лёгким наклоном
-    thickLine(ex + 2, by, ex + EYE_W - 4, by - 3, 3);
+    thickLine(ex + 2, by, ex + EYE_W - 4, by - 3, 2);
   }
 }
 
@@ -555,6 +589,7 @@ static bool eyesInTrouble() {
 #if SCENES_ON
 static bool hatShown();
 static void drawSantaHat();
+static void sleepReset();
 #endif
 
 static void eyesDrawFrame(int lid, int lower, int mouth) {
@@ -610,7 +645,7 @@ static void setBothTargets(float tx, float ty, float tr) {
 enum SceneName { SC_NONE = 0, SC_PEEK, SC_BOOK, SC_TIKTOK, SC_PC, SC_SELF, SC_COFFEE };
 
 static const uint8_t  SCENE_STEPS[7] = { 0, 4, 5, 5, 4, 5, 4 };
-static const uint16_t SCENE_STEP_MS[7] = { 0, 780, 750, 640, 660, 700, 720 };
+static const uint16_t SCENE_STEP_MS[7] = { 0, 950, 830, 800, 900, 800, 900 };
 static const unsigned long SCENE_GAP_MS     = 130000UL; // пауза между сценами ~2-4 мин
 static const unsigned long SCENE_GAP_VAR_MS = 150000UL;
 static const char* const SCENE_NAMES[] = { "none", "peek", "book", "tiktok", "pc", "self", "coffee" };
@@ -643,7 +678,7 @@ static void qcurve(int x0, int y0, int cx, int cy, int x1, int y1, int w) {
   }
 }
 
-static void arcThin(int cx, int cy, int rx, int ry, int a0, int a1) {
+static void arcThin(int cx, int cy, int rx, int ry, int a0, int a1, int w = 2) {
   const int n = 20;
   int px_ = -9999, py_ = -9999;
   if (a1 < a0) a1 += 360;
@@ -652,8 +687,7 @@ static void arcThin(int cx, int cy, int rx, int ry, int a0, int a1) {
     int x = (int)(cx + rx * cosf(a) + 0.5f);
     int y = (int)(cy + ry * sinf(a) + 0.5f);
     if (px_ != -9999) {
-      display.drawLine(px_, py_, x, y, SSD1306_BLACK);
-      display.drawLine(px_ + 1, py_, x + 1, y, SSD1306_BLACK);
+      for (int o = 0; o < w; o++) display.drawLine(px_, py_ + o, x, y + o, SSD1306_BLACK);
     }
     px_ = x; py_ = y;
   }
@@ -693,109 +727,104 @@ static void oledText(int x, int y, const char* s) {
 
 // ---------- реквизит сцен ----------
 
-static void drawMug(int steam) {
-  display.drawRoundRect(54, 42, 27, 21, 5, SSD1306_BLACK);   // корпус
-  arcThin(85, 52, 7, 7, 250, 110);                           // ручка-дуга
-  display.drawFastVLine(58, 45, 15, SSD1306_BLACK);          // блик
-  for (int i = 0; i < 3; i++) {                              // пар: три дышащие кривые
-    int k = (steam + i) % 3;
-    if (k == 2) continue;
-    int dx = (k == 0) ? -2 : 2;
-    int sx_ = 62 + i * 6;
-    qcurve(sx_, 40, sx_ + dx, 36, sx_ + dx, 31, 1);
+static void drawLN(int x0, int y0, int x1, int y1, int t) {
+  display.drawLine(x0, y0, x1, y1, SSD1306_BLACK);
+  if (t > 1) display.drawLine(x0, y0 + 1, x1, y1 + 1, SSD1306_BLACK);
+}
+
+// ---- v3 �ய: ��㦪�-ᨫ���, ��窠-"�㡫��", ���� ���� ----
+static void drawMug(int dy) {
+  const int top = 44 + dy, bot = 60 + dy;
+  const int midy = (top + bot) / 2;
+  display.fillRoundRect(55, top, 21, bot - top, 4, SSD1306_BLACK);
+  display.fillCircle(54, midy, 5, SSD1306_BLACK);   // ��窠
+  display.fillCircle(54, midy, 2, SSD1306_WHITE);
+  display.fillRect(59, top + 4, 2, (bot - top) - 7, SSD1306_WHITE);   // ����
+}
+
+// ---- v3 �ய: ������ �����, ���� ��࠭��� + ������ 2px + ��ப� ----
+static void drawBook(int dy) {
+  const int top = 44 + dy, bot = 63 + dy;
+  display.fillTriangle(35, top + 2, 63, top, 63, bot - 1, SSD1306_WHITE);
+  display.fillTriangle(35, top + 2, 35, bot - 1, 63, bot - 1, SSD1306_WHITE);
+  display.fillTriangle(93, top + 2, 65, top, 65, bot - 1, SSD1306_WHITE);
+  display.fillTriangle(93, top + 2, 93, bot - 1, 65, bot - 1, SSD1306_WHITE);
+  drawLN(35, top + 2, 63, top, 2);
+  drawLN(35, bot - 1, 63, bot - 1, 2);
+  drawLN(65, top, 93, top + 2, 2);
+  drawLN(65, bot - 1, 93, bot - 1, 2);
+  display.fillRect(34, top + 2, 2, bot - top - 3, SSD1306_BLACK);   // ���譨� �ࠩ
+  display.fillRect(92, top + 2, 2, bot - top - 3, SSD1306_BLACK);
+  display.fillRect(63, top, 3, bot - top - 1, SSD1306_BLACK);       // ���讪
+  drawLN(40, 52 + dy, 58, 50 + dy, 2);                              // ��ப�
+  drawLN(70, 50 + dy, 88, 52 + dy, 2);
+}
+
+// ---- v3 �ய: ⥫�䮭-ᨫ���, ���� ��࠭, play ----
+static void drawPhoneV3(int ph) {
+  display.fillRoundRect(53, ph, 23, 33, 4, SSD1306_BLACK);
+  display.fillRect(56, ph + 4, 17, 21, SSD1306_WHITE);
+  display.fillTriangle(61, ph + 9, 61, ph + 18, 68, ph + 13, SSD1306_BLACK);
+  display.fillRect(60, ph + 27, 9, 2, SSD1306_WHITE);
+}
+
+static void drawHeartV3(float hy, float hs) {
+  int rv = (int)(3.4f * hs + 0.5f), rw = (int)(3.6f * hs + 0.5f);
+  int cy = (int)(hy + 0.5f);
+  int tip = (int)(8.0f * hs + 0.5f);
+  display.fillCircle(64 - rw, cy, rv, SSD1306_BLACK);
+  display.fillCircle(64 + rw, cy, rv, SSD1306_BLACK);
+  display.fillTriangle(63 - rw, cy - 1, 65 + rw, cy - 1, 64, cy + tip, SSD1306_BLACK);
+}
+
+// ---- v3: ᬥ�騥�� ����� (���騥 �㦪�) ----
+static void drawHappyArcs(unsigned long now) {
+  int dy = (int)roundf(0.8f * sinf(now * 0.0031f));
+  arcThin(EYE1_X + 15, 32 + dy, 10, 8, 200, 340, 3);
+  arcThin(EYE2_X + 15, 32 + dy, 10, 8, 200, 340, 3);
+}
+
+// ---- v3 �ய: ��������� - ���� ᯫ�譮� �� �� 6 ������ ----
+static void drawKbdV3(unsigned long now, int pressedKey, bool shake) {
+  int dx = shake ? (int)(1.5f * sinf(now * 0.045f)) : 0;
+  for (int i = 0; i < 6; i++) {
+    int kx = 38 + i * 9 + dx;
+    bool flick = (pressedKey == i) || (shake && (((now / 150UL) + i) % 6 == 0));
+    if (flick) {
+      display.drawRect(kx, 52, 8, 7, SSD1306_BLACK);
+      display.drawRect(kx + 1, 53, 6, 5, SSD1306_BLACK);
+    } else {
+      display.fillRect(kx, 52, 8, 7, SSD1306_BLACK);
+    }
   }
 }
 
-static void drawLoupe(int pdx, int pdy) {
-  const int cx = 108, cy = 18, r = 11;
-  display.drawCircle(cx, cy, r, SSD1306_BLACK);
-  display.drawCircle(cx, cy, r - 1, SSD1306_BLACK);          // ободок
-  arcThin(cx, cy, r - 3, r - 3, 200, 290);                   // блик стекла
-  int pr = r - 4;                                            // зрачок x2 в линзе
-  int px_ = cx + pdx, py_ = cy + pdy;
-  int m = cx - r + pr + 2; if (px_ < m) px_ = m;
-  m = cx + r - pr - 2;     if (px_ > m) px_ = m;
-  m = cy - r + pr + 2;     if (py_ < m) py_ = m;
-  m = cy + r - pr - 2;     if (py_ > m) py_ = m;
-  display.fillCircle(px_, py_, pr, SSD1306_BLACK);
-  display.drawPixel(px_ - pr + 2, py_ - pr + 2, SSD1306_WHITE);
-  int hx = cx + r - 4, hy = cy + r - 4;                      // ручка + кулак
-  qcurve(hx, hy, hx + 5, hy + 6, hx + 9, hy + 13, 2);
-  display.drawLine(hx + 8, hy + 12, hx + 11, hy + 16, SSD1306_BLACK);
-  display.fillCircle(hx + 11, hy + 21, 5, SSD1306_WHITE);    // кулак на ручке
-  display.drawCircle(hx + 11, hy + 21, 5, SSD1306_BLACK);
+static void drawMouseV3(int x, int y, bool click) {
+  display.fillRoundRect(x, y, 9, 11, 3, SSD1306_BLACK);
+  if (click) display.fillRect(x + 3, y + 1, 3, 4, SSD1306_WHITE);
 }
 
-static void drawBook(bool lift) {
-  display.drawFastVLine(64, 38, 5, SSD1306_BLACK);           // корешок
-  qcurve(64, 38, 48, 44, 36, 46, 1);                         // левая страница
-  display.drawFastVLine(36, 46, 13, SSD1306_BLACK);
-  qcurve(36, 58, 48, 62, 64, 54, 1);
-  if (lift) {                                                // страница встаёт дыбом
-    qcurve(64, 44, 69, 22, 82, 26, 1);
-    display.drawFastVLine(82, 26, 25, SSD1306_BLACK);
-    qcurve(85, 50, 76, 55, 64, 53, 1);
-  } else {
-    qcurve(64, 38, 80, 44, 92, 46, 1);
-    display.drawFastVLine(92, 46, 13, SSD1306_BLACK);
-    qcurve(92, 58, 80, 62, 64, 54, 1);
-    display.drawLine(44, 46, 56, 44, SSD1306_BLACK);         // строки вдоль страниц
-    display.drawLine(43, 49, 55, 47, SSD1306_BLACK);
-    display.drawLine(70, 44, 82, 46, SSD1306_BLACK);
-    display.drawLine(71, 47, 83, 49, SSD1306_BLACK);
+static void drawCursorV3(int x, int y) {
+  display.fillTriangle(x, y, x, y + 7, x + 5, y + 5, SSD1306_BLACK);
+  display.fillTriangle(x + 3, y + 5, x + 6, y + 9, x + 8, y + 7, SSD1306_BLACK);
+}
+
+// ---- v3 �ய: ��᫥��� ����� 2px, �窨 1..3 � "!" ----
+static void drawThoughtV3(int phase, float pop) {
+  int rx = 8 + (int)(8.0f * pop + 0.5f);        // 10..16
+  fillEll(64, 8, rx, 8, SSD1306_BLACK);
+  if (rx > 3) fillEll(64, 8, rx - 2, 6, SSD1306_WHITE);
+  fillEll(64, 17, 3, 3, SSD1306_BLACK);         // 墮�⨪
+  fillEll(64, 17, 1, 1, SSD1306_WHITE);
+  fillEll(58, 21, 2, 2, SSD1306_BLACK);
+  fillEll(58, 21, 1, 1, SSD1306_WHITE);
+  if (phase >= 1 && phase <= 3) {
+    for (int i = 0; i < phase; i++) display.fillCircle(54 + i * 8, 8, 2, SSD1306_BLACK);
+  } else if (phase == 4) {
+    display.fillRect(62, 2, 3, 7, SSD1306_BLACK);   // "!"
+    display.fillRect(62, 11, 3, 3, SSD1306_BLACK);
   }
 }
-
-static void drawPhone(int ph, bool heart) {
-  display.drawRoundRect(52, ph, 25, 27, 6, SSD1306_BLACK);
-  display.drawPixel(62, ph + 2, SSD1306_BLACK);              // динамик
-  display.drawPixel(66, ph + 2, SSD1306_BLACK);
-  int y1 = ph + 5 + (heart ? 0 : 1);                         // контент прыгает
-  display.fillRect(56, y1, 17, 8, SSD1306_BLACK);
-  display.fillRect(56, y1 + 10, 13, 4, SSD1306_BLACK);
-  if (heart) {                                               // сердечко-лайк
-    display.fillCircle(59, 19, 3, SSD1306_BLACK);
-    display.fillCircle(64, 19, 3, SSD1306_BLACK);
-    display.fillTriangle(54, 19, 69, 19, 61, 28, SSD1306_BLACK);
-  }
-}
-
-static void drawKbd(int pressed, bool shake) {
-  for (int i = 0; i < 10; i++) {
-    int kx, ky, kw, kh;
-    if (i < 5) { kx = 40 + i * 10;        ky = 45; kw = 9;  kh = 6; }
-    else       { kx = 37 + (i - 5) * 12;  ky = 53; kw = 10; kh = 7; }
-    if (pressed == i) display.fillRect(kx + 1, ky, kw - 2, kh + 1, SSD1306_BLACK);
-    else              display.drawRect(kx, ky, kw, kh + 1, SSD1306_BLACK);
-  }
-  if (shake) {                                               // отлетевшие клавиши
-    display.drawTriangle(33, 40, 38, 38, 37, 43, SSD1306_BLACK);
-    display.drawTriangle(97, 40, 102, 39, 100, 44, SSD1306_BLACK);
-  }
-}
-
-static void drawMouseProp(int x, int y) {
-  display.drawRoundRect(x, y, 10, 13, 4, SSD1306_BLACK);
-  display.drawFastVLine(x + 4, y + 2, 5, SSD1306_BLACK);
-  qcurve(x + 4, y, x + 15, y - 7, x + 24, y - 3, 1);         // шнур
-}
-
-static void drawCursor(int x, int y) {
-  display.drawTriangle(x, y, x, y + 8, x + 6, y + 5, SSD1306_BLACK);
-  display.drawLine(x + 4, y + 7, x + 5, y + 10, SSD1306_BLACK);
-}
-
-static void drawThought(int cx, int cy, const char* s) {
-  display.fillRoundRect(cx - 15, cy - 9, 31, 15, 7, SSD1306_BLACK);
-  display.fillRoundRect(cx - 4, cy - 11, 21, 13, 6, SSD1306_BLACK);
-  display.fillRoundRect(cx - 14, cy - 8, 29, 13, 6, SSD1306_WHITE);  // эрозия = контур
-  display.fillRoundRect(cx - 3, cy - 10, 19, 11, 5, SSD1306_WHITE);
-  display.drawCircle(cx - 1, cy + 9, 3, SSD1306_BLACK);              // хвостик в просвет
-  display.drawCircle(cx - 5, cy + 14, 2, SSD1306_BLACK);
-  oledText(cx - 7, cy - 6, s);
-}
-
-// ---------- ночная шапка в зеве между бровей ----------
 
 static bool hatShown() {
   if (forceHat) return true;
@@ -812,87 +841,79 @@ static void drawSantaHat() {
 
 static void drawClosedEyes() {
   display.drawRoundRect(18, 30, 30, 26, 13, SSD1306_BLACK);
+  display.drawRoundRect(19, 31, 28, 24, 12, SSD1306_BLACK);
   display.drawRoundRect(80, 30, 30, 26, 13, SSD1306_BLACK);
-  display.drawFastHLine(19, 43, 28, SSD1306_BLACK);          // "спящие" линии
-  display.drawFastHLine(19, 44, 28, SSD1306_BLACK);
-  display.drawFastHLine(81, 43, 28, SSD1306_BLACK);
-  display.drawFastHLine(81, 44, 28, SSD1306_BLACK);
+  display.drawRoundRect(81, 31, 28, 24, 12, SSD1306_BLACK);
+  display.fillRect(19, 43, 28, 2, SSD1306_BLACK);
+  display.fillRect(81, 43, 28, 2, SSD1306_BLACK);
 }
 
-static void drawCloud(int pop) {                             // pop 1..3 - надувание
+static void drawCloud(int pop) {                             // pop 1..3: ���㢠���
   float s = pop / 3.0f;
-  int cx = 64, cyb = 26;                                     // фиксированный низ
-  int ccy = cyb - (int)(8.0f * s + 0.5f);
-  int crx = (int)(13.0f * s + 0.5f), cry = (int)(11.0f * s + 0.5f);
-  int scy = cyb - (int)(4.0f * s + 0.5f);
+  const int cx = 64, cyb = 26;
+  int ccy = cyb - (int)(10.0f * s + 0.5f);
+  int crx = (int)(13.0f * s + 0.5f), cry = (int)(10.0f * s + 0.5f);
+  int scy = cyb - (int)(5.0f * s + 0.5f);
   int srx = (int)(9.0f * s + 0.5f), sry = (int)(6.0f * s + 0.5f);
   int sdx = (int)(12.0f * s + 0.5f);
-  fillEll(cx, ccy, crx, cry, SSD1306_BLACK);                 // чёрный union бугров
+  fillEll(cx, ccy, crx, cry, SSD1306_BLACK);
   fillEll(cx - sdx, scy, srx, sry, SSD1306_BLACK);
   fillEll(cx + sdx, scy, srx, sry, SSD1306_BLACK);
-  if (crx > 2) fillEll(cx, ccy, crx - 1, cry - 1, SSD1306_WHITE);    // эрозия = контур
-  if (srx > 2) {
-    fillEll(cx - sdx, scy, srx - 1, sry - 1, SSD1306_WHITE);
-    fillEll(cx + sdx, scy, srx - 1, sry - 1, SSD1306_WHITE);
+  if (crx > 3) fillEll(cx, ccy, crx - 2, cry - 2, SSD1306_WHITE);          // ���� 2px
+  if (srx > 3) {
+    fillEll(cx - sdx, scy, srx - 2, sry - 2, SSD1306_WHITE);
+    fillEll(cx + sdx, scy, srx - 2, sry - 2, SSD1306_WHITE);
   }
-  if (pop == 3) {                                            // хвостик в коридоре между глазами
-    display.drawCircle(68, 30, 3, SSD1306_BLACK);
-    display.drawCircle(63, 34, 2, SSD1306_BLACK);
+  if (pop == 3) {
+    fillEll(68, 30, 3, 3, SSD1306_BLACK);
+    fillEll(68, 30, 1, 1, SSD1306_WHITE);
+    fillEll(61, 34, 2, 2, SSD1306_BLACK);
+    fillEll(61, 34, 1, 1, SSD1306_WHITE);
   }
 }
 
 static void drawDreamZzz() {
-  oledText(54, 8, "Zz");
-  oledText(63, 15, "z");
+  oledText(52, 8 + (dreamPh ? 1 : 0), "Zz");
+  oledText(64, 15, "z");
 }
 
 static void drawDreamServer(int ph) {
-  display.drawRoundRect(50, 7, 29, 16, 3, SSD1306_BLACK);
-  display.drawFastHLine(53, 10, 14, SSD1306_BLACK);
-  display.drawFastHLine(53, 14, 14, SSD1306_BLACK);
-  display.drawFastHLine(53, 18, 14, SSD1306_BLACK);
-  if (ph == 0) {
-    display.fillCircle(72, 11, 2, SSD1306_BLACK);
-    display.drawCircle(72, 18, 2, SSD1306_BLACK);
-  } else {
-    display.drawCircle(72, 11, 2, SSD1306_BLACK);
-    display.fillCircle(72, 18, 2, SSD1306_BLACK);
-  }
+  display.fillRoundRect(52, 7, 25, 14, 2, SSD1306_BLACK);     // �����-ᨫ���
+  for (int yy = 10; yy <= 18; yy += 4) display.fillRect(55, yy, 11, 2, SSD1306_WHITE);
+  display.fillRect(69, (ph == 0) ? 10 : 14, 4, 3, SSD1306_WHITE);   // ������� �����
 }
 
 static void drawDreamFish(int ph) {
   int dy = ph ? -1 : 1;
   int y = 14 + dy;
-  display.drawRoundRect(52, y - 4, 19, 9, 4, SSD1306_BLACK);  // тельце
-  display.drawTriangle(70, y - 4, 77, y - 7 - dy, 70, y + 4, SSD1306_BLACK);   // хвост-вилка
-  display.drawTriangle(77, y - 7 - dy, 77, y + 7 - dy, 70, y + 4, SSD1306_BLACK);
-  display.drawPixel(56, y - 1, SSD1306_BLACK);               // глаз
-  display.drawTriangle(58, y, 62, y - 2, 62, y + 2, SSD1306_BLACK);            // плавник
-  display.drawPixel(74, 10, SSD1306_BLACK);
-  display.drawPixel(76, 8, SSD1306_BLACK);                   // пузырьки
+  display.fillRoundRect(52, y - 4, 18, 9, 4, SSD1306_BLACK);  // ⥫�
+  display.fillTriangle(70, y - 4, 77, y - 7 - dy, 77, y + 7 - dy, SSD1306_BLACK);
+  display.fillRect(56, y - 1, 2, 2, SSD1306_WHITE);           // ����
+  display.fillRect(60, y, 7, 1, SSD1306_WHITE);               // ��
 }
 
 static void drawDreamCat(int ph) {
-  display.drawRoundRect(52, 8, 21, 19, 8, SSD1306_BLACK);    // голова
-  display.drawTriangle(54, 12, 50, 3, 60, 8, SSD1306_BLACK); // уши
-  display.drawTriangle(66, 8, 76, 3, 70, 12, SSD1306_BLACK);
-  display.drawLine(55, 16, 59, 17, SSD1306_BLACK);           // спящие глазки
-  display.drawLine(63, 17, 67, 16, SSD1306_BLACK);
-  display.drawPixel(61, 19, SSD1306_BLACK);                  // нос
-  display.drawLine(49, 18, 44, 17, SSD1306_BLACK);           // усы
-  display.drawLine(49, 20, 44, 21, SSD1306_BLACK);
-  display.drawLine(73, 18, 78, 17, SSD1306_BLACK);
-  display.drawLine(73, 20, 78, 21, SSD1306_BLACK);
-  if (ph) qcurve(70, 25, 79, 29, 81, 22, 2);                 // хвост машет
-  else    qcurve(70, 25, 78, 30, 79, 17, 2);
+  int ear = ph ? 1 : 0;
+  display.fillRoundRect(52, 9, 23, 19, 9, SSD1306_BLACK);           // ������
+  display.fillTriangle(54, 14, 50, 5 - ear, 61, 10, SSD1306_BLACK); // ��
+  display.fillTriangle(66, 10, 76, 5 - ear, 72, 14, SSD1306_BLACK);
+  display.fillRect(55, 18, 6, 2, SSD1306_WHITE);                    // ��騥 �����
+  display.fillRect(65, 18, 6, 2, SSD1306_WHITE);
+  display.fillTriangle(61, 21, 66, 21, 63, 23, SSD1306_WHITE);      // ��ᨪ
+  display.fillRect(47, 20, 5, 2, SSD1306_BLACK);                    // ���
+  display.fillRect(76, 20, 5, 2, SSD1306_BLACK);
+  if (ph) qcurve(72, 25, 80, 29, 82, 22, 2);                        // 墮��
+  else    qcurve(72, 25, 79, 30, 80, 17, 2);
 }
 
 static void drawDreamHat(int ph) {
-  int dy = ph ? 1 : 0;                                       // шапка привстаёт и прыгает
-  display.drawTriangle(64, 6 + dy, 56, 22 + dy, 74, 22 + dy, SSD1306_BLACK);
-  display.fillRect(54, 22 + dy, 23, 6, SSD1306_BLACK);       // отворот
-  display.fillCircle(64, 5 + dy, 3, SSD1306_BLACK);          // пухлый помпон
-  spark(50, 10); spark(80, 12);                              // блёстки
+  int dy = ph ? 1 : 0;
+  display.fillTriangle(64, 6 + dy, 55, 22 + dy, 73, 22 + dy, SSD1306_BLACK);
+  display.fillCircle(64, 5 + dy, 5, SSD1306_BLACK);           // ������
+  display.fillRect(54, 21 + dy, 21, 4, SSD1306_BLACK);        // ������
+  display.fillRect(56, 25 + dy, 17, 2, SSD1306_BLACK);
+  if (ph) spark(50, 10);
+  else    spark(78, 12);
 }
 
 static void drawDreams() {
@@ -905,12 +926,16 @@ static void drawDreams() {
   }
 }
 
-// ---------- машина сцен ----------
+// ---------- ��設� �業 ----------
 
 static void sceneStart(int s) {
   sceneName = s;
   sceneStep = 0;
   sceneStepAt = millis() + SCENE_STEP_MS[s];
+  // v3: �業� ��稭����� �� ������� (blink-⥫�����)
+  blinkActive = true; blinkStart = millis();
+  doubleBlink = false; blinkSecond = false;
+  nextBlinkAt = millis() + 2200UL + random(0, 3500UL);
   Serial.print(F("[SCENE] start "));
   Serial.println(SCENE_NAMES[s]);
 }
@@ -927,6 +952,13 @@ static void sceneClear() {
 
 static void sceneSetToken(const char* tok) {
   if (!tok || !*tok) return;
+  if (!strcmp(tok, "wake")) {          // v3: �� ᯠ�� 2 ������
+    wakeUntil = millis() + 120000UL;
+    sleepActive = false; sleepReset();
+    dispMode = DM_EYES; lastFrame = 0;
+    Serial.println(F("[SCENE] wake 2min"));
+    return;
+  }
   if (!strcmp(tok, "none")) { forceHat = false; sceneClear(); Serial.println(F("[SCENE] cleared")); return; }
   if (!strcmp(tok, "hat"))  { forceScene = -1; forceHat = true; sceneName = SC_NONE;
                               dispMode = DM_EYES; lastFrame = 0;
@@ -1002,27 +1034,30 @@ static bool sceneTick(unsigned long now) {
 }
 
 // зрачки на цели сцены (mock-значения px/py/r по шагам)
+// v3: 楫� �業 (px, py, r) �� 蠣��
 static void sceneTargets() {
   switch (sceneName) {
     case SC_PEEK: {
-      static const int8_t t[4][3] = { {0,6,7}, {0,-2,7}, {-2,-2,7}, {0,5,7} };
-      setBothTargets(t[sceneStep][0], t[sceneStep][1], t[sceneStep][2]);
+      static const int8_t tp[4][2] = { { 0, 6 }, { 3, -4 }, { -4, -4 }, { 0, 5 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 7);
       break; }
     case SC_BOOK: {
-      static const int8_t t[5][3] = { {-4,2,6}, {4,2,6}, {0,-9,6}, {0,2,6}, {0,-3,8} };
-      setBothTargets(t[sceneStep][0], t[sceneStep][1], t[sceneStep][2]);
+      static const int8_t tp[5][2] = { { -5, 1 }, { 5, 1 }, { -3, 3 }, { 3, 3 }, { 0, -2 } };
+      static const uint8_t tr[5]   = { 6, 6, 6, 6, 9 };     // 9 = �ப�: "��!"
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
       break; }
     case SC_TIKTOK: {
-      static const int8_t t[5][3] = { {0,4,6}, {0,4,6}, {0,0,7}, {0,0,7}, {0,3,6} };
-      setBothTargets(t[sceneStep][0], t[sceneStep][1], t[sceneStep][2]);
+      static const int8_t tp[5][2] = { { 0, 4 }, { 0, 4 }, { 1, -1 }, { 2, -2 }, { 0, 4 } };
+      static const uint8_t tr[5]   = { 6, 6, 7, 7, 6 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
       break; }
     case SC_PC: {
-      static const int8_t t[4][3] = { {-5,0,7}, {5,0,7}, {4,2,7}, {0,2,7} };
-      setBothTargets(t[sceneStep][0], t[sceneStep][1], t[sceneStep][2]);
+      static const int8_t tp[4][2] = { { 5, -1 }, { -5, -1 }, { 4, 1 }, { 0, 2 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 7);
       break; }
     case SC_SELF: {
-      static const int8_t t[5][3] = { {-4,-4,7}, {-4,-4,7}, {-5,-3,7}, {-5,-3,7}, {3,3,7} };
-      setBothTargets(t[sceneStep][0], t[sceneStep][1], t[sceneStep][2]);
+      static const int8_t tp[5][2] = { { -4, -4 }, { -5, -3 }, { -5, -3 }, { 3, 3 }, { 2, 1 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 7);
       break; }
     case SC_COFFEE: {
       setBothTargets(0, 2, 7);
@@ -1031,88 +1066,112 @@ static void sceneTargets() {
   }
 }
 
-// ---------- отрисовщики сцен (порядок как в моке: фон - глаза - реквизит - текст) ----------
-
-static void sceneDrawPeek(int lid) {
-  static const int8_t ge[4][4] = { {34,28,0,10}, {20,26,0,0}, {20,26,0,0}, {32,26,0,12} };
-  brows = (uint8_t)ge[sceneStep][2];
-  drawEye(8, ge[sceneStep][0], ge[sceneStep][1], eyeL, lid, ge[sceneStep][3]);   // глаза съехали к центру
-  drawEye(58, ge[sceneStep][0], ge[sceneStep][1], eyeR, lid, ge[sceneStep][3]);
-  if (sceneStep == 1) drawLoupe(-5, -2);   // подглядывает в лупу
-  if (sceneStep == 2) drawLoupe(2, 1);
+// �ண��� ⥪�饣� 蠣� (�� �� ��� ��砫�); sceneStepAt - ��⪠ ���� 蠣�
+static int stepElapsed(unsigned long now) {
+  int rem = (int)(sceneStepAt - now);
+  if (rem < 0) rem = 0;
+  int el = (int)SCENE_STEP_MS[sceneName] - rem;
+  if (el < 0) el = 0;
+  return el;
 }
 
-static void sceneDrawBook(int lid) {
-  ditherOval(64, 60, 28, 2);
+static void sceneDrawPeek(int lid) {
+  // ������뢠���: ����� ������� ᭨��, ���뢠����, ����, ����뢠����
+  static const int8_t ge[4][4] = { { 33, 24, 0, 0 }, { 12, 38, 1, 0 }, { 12, 38, 1, 0 }, { 33, 24, 0, 0 } };
+  brows = (uint8_t)ge[sceneStep][2];
+  drawEye(EYE1_X, ge[sceneStep][0], ge[sceneStep][1], eyeL, lid, ge[sceneStep][3]);
+  drawEye(EYE2_X, ge[sceneStep][0], ge[sceneStep][1], eyeR, lid, ge[sceneStep][3]);
+}
+
+static void sceneDrawBook(int lid, unsigned long now) {
   brows = (sceneStep >= 2) ? 1 : 0;
   drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
   drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
-  if (sceneStep < 4) {
-    drawBook(sceneStep == 2);              // перелистывание: страница встаёт дыбом
-    if (sceneStep == 3) oledText(50, 27, "hm?");
+  int dy;
+  if (sceneStep == 0) {
+    dy = 22;                                            // ����� ��� �� ����堫�
+  } else if (sceneStep == 1) {
+    int el = stepElapsed(now);
+    dy = (el >= 420) ? 0 : (int)(22.0f * (1.0f - el / 420.0f));
+  } else if (sceneStep >= 4) {
+    int el = stepElapsed(now);
+    dy = (int)(24.0f * el / 750.0f);                    // ����� ������
+    if (dy > 24) dy = 24;
   } else {
-    oledText(48, 44, "woah!");
+    dy = 0;
+  }
+  if (dy < 24) drawBook(dy);
+}
+
+static void sceneDrawTiktok(int lid, unsigned long now) {
+  brows = 0;
+  drawPhoneV3(16);
+  if (sceneStep == 2 || sceneStep == 3) {
+    // �थ窮 ���� �१ ��� 蠣� ������, ����� - �㦪�
+    unsigned long el = (unsigned long)stepElapsed(now);
+    unsigned long e1 = (sceneStep == 2) ? el : el + 400UL;
+    if (e1 > 800UL) e1 = 800UL;
+    float u = (float)e1 / 800.0f;
+    float uu = u * u * (3.0f - 2.0f * u);
+    drawHeartV3(34.0f - 26.0f * uu, 1.3f - 0.3f * uu);
+    drawHappyArcs(now);
+  } else {
+    drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+    drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
   }
 }
 
-static void sceneDrawTiktok(int lid) {
+static void sceneDrawPc(int lid, unsigned long now) {
   switch (sceneStep) {
     case 0:
-    case 1:
       brows = 0;
-      drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);   // смотрят вниз в телефон
-      drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
-      drawPhone(30, sceneStep == 1);
+      drawKbdV3(now, (int)((now / 160UL) % 6UL), false);
+      drawMouseV3(100, 51, false);
       break;
-    case 2:
-    case 3: {
-      display.setTextSize(1);
-      drawPhone(32, false);
-      if (sceneStep == 3) spark(44, 24);   // лайк!
-      brows = 0;
-      // счастливые глаза-дужки
-      arcThin(EYE1_X + 15, 20 + 10, 13, 12, 200, 340);
-      arcThin(EYE2_X + 15, 20 + 10, 13, 12, 200, 340);
+    case 1:
+      brows = 1;
+      drawKbdV3(now, (int)((now / 190UL) % 6UL), false);
+      drawMouseV3(100, 51, (now - (sceneStepAt - SCENE_STEP_MS[sceneName])) < 240UL);
+      break;
+    case 2: {
+      brows = 1;
+      float u = (float)stepElapsed(now) / 850.0f;
+      if (u > 1.0f) u = 1.0f;
+      u = u * u * (3.0f - 2.0f * u);
+      drawKbdV3(now, -1, false);
+      drawMouseV3(100, 51, false);
+      drawCursorV3(54 + (int)(10.0f * u), 40);
       break; }
     default:
-      brows = 0;
-      drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
-      drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
-      drawPhone(27, false);
+      brows = 2;                                        // ������ �� ���᪥
+      drawKbdV3(now, -1, true);
+      drawMouseV3(100, 51, false);
       break;
   }
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, sceneStep >= 3 ? 4 : 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, sceneStep >= 3 ? 4 : 0);
 }
 
-static void sceneDrawPc(int lid) {
-  brows = (sceneStep == 2) ? 1 : (sceneStep == 3) ? 2 : 0;
-  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, sceneStep == 3 ? 4 : 0);
-  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, sceneStep == 3 ? 4 : 0);
-  switch (sceneStep) {
-    case 0: drawKbd(2, false); drawMouseProp(99, 51); break;   // печатает
-    case 1: drawKbd(7, false); drawMouseProp(99, 51); break;
-    case 2: drawKbd(-1, false); drawMouseProp(104, 50); drawCursor(62, 40); break;  // заметил курсор
-    default: drawKbd(-1, true); oledText(113, 28, "!!"); break;                    // ЗАВИСЛО: трясёт клаву
-  }
-}
-
-static void sceneDrawSelf(int lid) {
-  static const char* const POPS[] = { ".", "..", "...", "hm?", "!!" };
+static void sceneDrawSelf(int lid, unsigned long now) {
+  static const uint8_t PH[5] = { 1, 2, 3, 4, 0 };       // �窨, �窨, "!", �����
   brows = (sceneStep < 3) ? 1 : 0;
-  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
-  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
-  drawThought(64, 6, POPS[sceneStep]);
-  if (sceneStep == 4) {                      // "!!" - счастливые глаза-дужки
-    arcThin(EYE1_X + 15, 18 + 10, 13, 12, 200, 340);
-    arcThin(EYE2_X + 15, 18 + 10, 13, 12, 200, 340);
+  if (sceneStep >= 3) {
+    drawHappyArcs(now);
+  } else {
+    drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+    drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
   }
+  float pop = 1.0f;
+  if (sceneStep == 3) pop = 1.0f - 0.08f * fabsf(sinf(now * 0.021f));
+  drawThoughtV3(PH[sceneStep], pop);
 }
 
 static void sceneDrawCoffee(int lid) {
-  ditherOval(67, 63, 17, 2);
   brows = 0;
-  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 9);   // прищур-кайф
-  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 9);
-  drawMug(sceneStep);
+  int lower = (sceneStep == 1 || sceneStep == 2) ? 11 : 8;   // �����-����
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, lower);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, lower);
+  drawMug((sceneStep >= 1 && sceneStep <= 2) ? -2 : 0);
 }
 
 static void sceneFrame(unsigned long now, int lid) {
@@ -1120,18 +1179,18 @@ static void sceneFrame(unsigned long now, int lid) {
   display.fillScreen(SSD1306_WHITE);
   sceneTargets();
   switch (sceneName) {
-    case SC_PEEK:   sceneDrawPeek(lid);   break;
-    case SC_BOOK:   sceneDrawBook(lid);   break;
-    case SC_TIKTOK: sceneDrawTiktok(lid); break;
-    case SC_PC:     sceneDrawPc(lid);     break;
-    case SC_SELF:   sceneDrawSelf(lid);   break;
-    case SC_COFFEE: sceneDrawCoffee(lid); break;
+    case SC_PEEK:   sceneDrawPeek(lid);        break;
+    case SC_BOOK:   sceneDrawBook(lid, now);   break;
+    case SC_TIKTOK: sceneDrawTiktok(lid, now); break;
+    case SC_PC:     sceneDrawPc(lid, now);     break;
+    case SC_SELF:   sceneDrawSelf(lid, now);   break;
+    case SC_COFFEE: sceneDrawCoffee(lid);      break;
     default: break;
   }
   display.display();
 }
 
-// ---------- машина сна ----------
+// ---------- ��設� ᭠ ----------
 
 static void sleepReset() {
   sleepPh = 0;
@@ -1228,7 +1287,7 @@ static void eyesTick() {
       setBothTargets(dx, dy, 4.2f);
       nextLookAt = now + 140UL + random(0, 160UL);
     }
-  } else if (sleep_) {
+  } else if (sleep_ && now >= wakeUntil) {   // v3: E|wake ��ন� ����� �����묨
     // НОЧЬ: сонный режим - взгляд дрейфует вниз, редкие моргания
     actMode = -1;
     brows = 0;
@@ -1261,6 +1320,7 @@ static void eyesTick() {
 #endif
     {
     lowerLid = 0;
+    if (now < exhaleUntil) lowerLid = 6;   // v3: �뤮� ��᫥ �ॢ���/�������� ��᫥ ᭠
     if (actMode >= 0) {
       // идёт особое действие
       if (now >= actUntil) {
@@ -1316,17 +1376,16 @@ static void eyesTick() {
         }
       }
     }
-    if (actMode == -1) brows = 0;
+    if (actMode == -1) brows = (now < exhaleUntil) ? 1 : 0;
     }
   }
 
   // ---- плавное движение ----
-  eyeL.px += (eyeL.tx - eyeL.px) * 0.25f;
-  eyeL.py += (eyeL.ty - eyeL.py) * 0.25f;
-  eyeL.pr += (eyeL.tr - eyeL.pr) * 0.2f;
-  eyeR.px += (eyeR.tx - eyeR.px) * 0.25f;
-  eyeR.py += (eyeR.ty - eyeR.py) * 0.25f;
-  eyeR.pr += (eyeR.tr - eyeR.pr) * 0.2f;
+  // v3: ��㦨�� ����� lerp, ���� ᠪ���� � ��堭��; ���室� �ॢ���/ᮭ -> �뤮�
+  v3Phase(0.033f, (down || panic) ? 0.3f : 1.0f);
+  if (panicPrev && !panic)  exhaleUntil = now + 1600UL;
+  if (sleepPrev && !sleep_) exhaleUntil = now + 1500UL;
+  panicPrev = panic; sleepPrev = sleep_;
 
 #if SCENES_ON
   // при выходе из ночи сон начнётся с засыпания заново
