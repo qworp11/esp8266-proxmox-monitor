@@ -164,6 +164,8 @@ static unsigned long exhaleUntil = 0;  // Ø‡®È„‡-Æ°´•£Á•≠®• / ØÆ‚Ô£®¢†≠®•
 static bool panicPrev = false;
 static bool sleepPrev = false;
 static unsigned long wakeUntil = 0;    // E|wake: ≠• ·Ø†‚Ï 2 ¨®≠„‚Î
+static unsigned long gHappyUntil = 0;  // ‡†§Æ·‚Ï-§„¶™®: £´†ß† „´Î°†Ó‚·Ô N ¨· ØÆ·´• °•§Î
+static uint8_t blinkSlow = 0;          // ß•¢Æ™: blink ‡†·‚Ô£®¢†•‚·Ô ¢ 240¨· * k
 
 static void sstep(float& x, float& v, float tgt, float k, float d, float dt) {
   v += (k * (tgt - x) - d * v) * dt;
@@ -590,6 +592,7 @@ static bool eyesInTrouble() {
 static bool hatShown();
 static void drawSantaHat();
 static void sleepReset();
+static void drawHappyArcs(unsigned long now);
 #endif
 
 static void eyesDrawFrame(int lid, int lower, int mouth) {
@@ -599,8 +602,12 @@ static void eyesDrawFrame(int lid, int lower, int mouth) {
   int ey, eh;
   if (!trouble)       { ey = EYE_OK_Y; eh = EYE_OK_H; }
   else                { ey = EYE_BAD_Y; eh = EYE_BAD_H; }
-  drawEye(EYE1_X, ey, eh, eyeL, lid, lower);
-  drawEye(EYE2_X, ey, eh, eyeR, lid, lower);
+  if (!trouble && (long)(gHappyUntil - millis()) > 0) {
+    drawHappyArcs(millis());                   // v3: °•§† Ø‡ÆË´† - £´†ß† „´Î°†Ó‚·Ô
+  } else {
+    drawEye(EYE1_X, ey, eh, eyeL, lid, lower);
+    drawEye(EYE2_X, ey, eh, eyeR, lid, lower);
+  }
   if (trouble) {
     drawMouth(mouth);
   } else if (g_srv.backup) {
@@ -935,6 +942,7 @@ static void sceneStart(int s) {
   // v3: ·Ê•≠† ≠†Á®≠†•‚·Ô ®ß ¨®£†≠®Ô (blink-‚•´•ØÆ‡‚)
   blinkActive = true; blinkStart = millis();
   doubleBlink = false; blinkSecond = false;
+  blinkSlow = 0;
   nextBlinkAt = millis() + 2200UL + random(0, 3500UL);
   Serial.print(F("[SCENE] start "));
   Serial.println(SCENE_NAMES[s]);
@@ -957,6 +965,17 @@ static void sceneSetToken(const char* tok) {
     sleepActive = false; sleepReset();
     dispMode = DM_EYES; lastFrame = 0;
     Serial.println(F("[SCENE] wake 2min"));
+    return;
+  }
+  if (!strcmp(tok, "yawn")) {          // v3: ¢Îß¢†‚Ï ß•¢Æ™ ØÆ ™Æ¨†≠§•
+    actMode = 4; actStep = 1;
+    actUntil = millis() + 2500UL;
+    blinkSlow = 8; blinkActive = true; blinkStart = millis();
+    doubleBlink = false; blinkSecond = false;
+    brows = 1;
+    setBothTargets(0, 0, PUPIL_R_BASE);
+    dispMode = DM_EYES; lastFrame = 0;
+    Serial.println(F("[SCENE] yawn"));
     return;
   }
   if (!strcmp(tok, "none")) { forceHat = false; sceneClear(); Serial.println(F("[SCENE] cleared")); return; }
@@ -1250,7 +1269,7 @@ static void eyesTick() {
   }
   int lid = 0;
   if (blinkActive) {
-    float ph = (now - blinkStart) / 240.0f;
+    float ph = (now - blinkStart) / (float)(240UL * (blinkSlow ? blinkSlow : 1));   // v3: ß•¢Æ™ = ¨•§´•≠≠Î© blink
     if (ph >= 1.0f) {
       if (doubleBlink && !blinkSecond) { blinkSecond = true; blinkStart = now; ph = 0; }
       else { blinkActive = false; lid = 0; nextBlinkAt = now + 2000UL + random(0, 4000UL); }
@@ -1336,6 +1355,21 @@ static void eyesTick() {
             if (actStep < 4) { setBothTargets(wp[actStep][0], wp[actStep][1], PUPIL_R_BASE); actUntil = now + 450UL; }
             else actMode = -1;
             break; }
+          case 4: // ß•¢Æ™: ß‡†Á™® ¢ Ê•≠‚‡, ¨•§´•≠≠Î© blink · °‡Æ¢Ô¨®, ØÆ‚Æ¨ ·Æ≠≠Î© ¢Î§ÆÂ
+            if (actStep <= 1) {
+              setBothTargets(0.0f, 0.0f, PUPIL_R_BASE);
+              blinkSlow = 8;                                  // 240¨· * 8 = ~1.9·
+              blinkActive = true; blinkStart = now;
+              doubleBlink = false; blinkSecond = false;
+              brows = 1;
+              actUntil = now + 2500UL;
+            } else {
+              blinkSlow = 0;
+              actMode = -1;
+              exhaleUntil = now + 1300UL;                     // ·Æ≠≠Î© ¢Î§ÆÂ
+              nextLookAt = now + 1200UL;
+            }
+            break;
           default:
             actMode = -1;
         }
@@ -1351,7 +1385,7 @@ static void eyesTick() {
       }
       // –≤—Ä–µ–º—è –æ—Å–æ–±–æ–≥–æ –¥–µ–π—Å—Ç–≤–∏—è
       if (now >= nextActAt) {
-        actMode = random(0, 4);
+        actMode = (random(0, 9) == 0) ? 4 : random(0, 4);   // v3: ™†¶§Î© §•¢Ô‚Î© - ß•¢Æ™
         actStep = 0;
         switch (actMode) {
           case 0: // "–∑–∞–º–µ—á–∞–µ—Ç —Ç–µ–±—è": –∑—Ä–∞—á–∫–∏ –∫ —Ü–µ–Ω—Ç—Ä—É –∏ —Ä–∞—Å—à–∏—Ä—è—é—Ç—Å—è, –±—Ä–æ–≤–∏ –≤–≤–µ—Ä—Ö
@@ -1529,6 +1563,7 @@ void showState() {
 void setStatus(State s) {
   if (s == state) return;
   state = s;
+  if (state == ST_OK) gHappyUntil = millis() + 2200UL;   // v3: §„¶™®-‡†§Æ·‚Ï ØÆ·´• °•§Î
   if (state == ST_DOWN) {
     alertReset(); // –≤–∫–ª—é—á–∞–µ–º "–ø—Ä–æ—Ç–∏–≤–Ω—ã–π" —Ä–µ–∂–∏–º –º–∏–≥–∞–Ω–∏—è
   } else {
@@ -1661,7 +1696,7 @@ void monitorSetup() {
 #if SCENES_ON
   nextSceneAt = millis() + 30000UL;   // –ø–µ—Ä–≤–∞—è —Å—Ü–µ–Ω–∞ "–∂–∏–≤–æ–≥–æ –¥–Ω—è" ~—á–µ—Ä–µ–∑ 30 —Å–µ–∫
   Serial.println(F("[SCENE] demo via USB: send line E|<name>"));
-  Serial.println(F("[SCENE] names: peek | book | tiktok | pc | self | coffee | hat | none"));
+  Serial.println(F("[SCENE] names: peek | book | tiktok | pc | self | coffee | hat | wake | yawn | none"));
 #endif
 
   // –∫–æ—Ä–æ—Ç–∫–∏–π "—è –∂–∏–≤" –±–∏–ø - –∏ –ø—Ä–æ–≤–µ—Ä–∫–∞ –ø–∏—â–∞–ª–∫–∏
