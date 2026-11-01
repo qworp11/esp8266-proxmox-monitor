@@ -169,7 +169,7 @@ static uint8_t blinkSlow = 0;          // §¥¢®ª: blink à áâï£¨¢ ¥âáï ¢ 240¬á * k
 
 static void sstep(float& x, float& v, float tgt, float k, float d, float dt) {
   v += (k * (tgt - x) - d * v) * dt;
-  if (v > 80.0f) v = 80.0f; else if (v < -80.0f) v = -80.0f;
+  if (v > 160.0f) v = 160.0f; else if (v < -160.0f) v = -160.0f;
   x += v * dt;
 }
 
@@ -182,12 +182,12 @@ static void v3Phase(float dt, float sacAmp) {
   gAx = sacAmp * 0.6f * sinf(ph1);
   gAy = sacAmp * 0.35f * sinf(ph2 + 1.2f);
   gEhOff = (int)roundf(0.9f * sinf(ph3));
-  sstep(eyeL.px, svelL[0], eyeL.tx, 110.0f, 11.0f, dt);
-  sstep(eyeL.py, svelL[1], eyeL.ty, 110.0f, 11.0f, dt);
-  sstep(eyeL.pr, svelL[2], eyeL.tr, 90.0f, 12.0f, dt);
-  sstep(eyeR.px, svelR[0], eyeR.tx, 110.0f, 11.0f, dt);
-  sstep(eyeR.py, svelR[1], eyeR.ty, 110.0f, 11.0f, dt);
-  sstep(eyeR.pr, svelR[2], eyeR.tr, 90.0f, 12.0f, dt);
+  sstep(eyeL.px, svelL[0], eyeL.tx, 125.0f, 8.0f, dt);   // ¯®§¨æ¨ï: ¯¥à¥«ñâ ~30%
+  sstep(eyeL.py, svelL[1], eyeL.ty, 125.0f, 8.0f, dt);
+  sstep(eyeL.pr, svelL[2], eyeL.tr, 100.0f, 6.0f, dt);   // à §¬¥à §à çª : ¦¥«¥
+  sstep(eyeR.px, svelR[0], eyeR.tx, 125.0f, 8.0f, dt);
+  sstep(eyeR.py, svelR[1], eyeR.ty, 125.0f, 8.0f, dt);
+  sstep(eyeR.pr, svelR[2], eyeR.tr, 100.0f, 6.0f, dt);
 }
 
 // Ð¿Ð¾Ð²ÐµÐ´ÐµÐ½Ð¸Ðµ
@@ -201,7 +201,7 @@ static int  actMode = -1;        // -1 Ð½ÐµÑ‚, 0 "Ð·Ð°Ð¼ÐµÑ‡Ð°ÐµÑ‚", 1 Ð²Ð»ÐµÐ²Ð
 static int  actStep = 0;
 static unsigned long actUntil = 0;
 static unsigned long lastFrame = 0;
-static const uint8_t FRAME_MS = 33; // ~30 fps
+static const uint8_t FRAME_MS = 16; // ä¨§¨ª  60 ƒæ; íªà ­ ¤ ñâ ~35-40 ª/á ¯® I2C
 
 // =============================================================
 // Ð”ÐÐÐÐ«Ð• Ð¡Ð•Ð Ð’Ð•Ð Ð: Ð¼Ð¸ÐºÑ€Ð¾ÑÐµÑ€Ð²Ð¸Ñ pxmon Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½ Ð½Ð° TARGET:8123
@@ -498,6 +498,7 @@ static void thickLine(int x0, int y0, int x1, int y1, int t) {
   }
 }
 
+static void fillEll(int cx, int cy, int rx, int ry, uint16_t col);
 static void drawEye(int ex, int ey, int eh, const Pupil& e, int lid, int lower) {
   ey += gEhOff;                              // v3: ¤ëå ­¨¥
   int rr = EYE_W / 2;                        // Ñ€Ð°Ð´Ð¸ÑƒÑ ÐºÐ°Ð¿ÑÑƒÐ»Ñ‹
@@ -518,7 +519,28 @@ static void drawEye(int ex, int ey, int eh, const Pupil& e, int lid, int lower) 
   // Ð±ÐµÐ»Ð¾Ðº
   display.fillRoundRect(ex, ey, EYE_W, eh, rr, SSD1306_WHITE);
   // Ð·Ñ€Ð°Ñ‡Ð¾Ðº + Ð±Ð»Ð¸Ðº
-  display.fillCircle(cx, cy, pr, SSD1306_BLACK);   // v3: á¯«®è­®© §à ç®ª, ¡¥§ ¡«¨ª 
+  {
+    // v3 ¦¥«¥: §à ç®ª á¯«îé¨¢ ¥âáï ¢¤®«ì ¤¢¨¦¥­¨ï, ¢ ¯®ª®¥ - ¨¤¥ «ì­ë© ªàã£
+    const float* sv = (&e == &eyeL) ? svelL : svelR;
+    float vx = fabsf(sv[0]), vy = fabsf(sv[1]);
+    if (pr > 2 && (vx > 8.0f || vy > 8.0f)) {
+      float s = 1.0f + 0.006f * ((vx >= vy) ? vx : vy);
+      if (s > 1.38f) s = 1.38f;
+      int rx, ry;
+      if (vx >= vy) { rx = (int)(pr * s + 0.5f); ry = (int)(pr * pr / rx + 0.5f); }
+      else          { ry = (int)(pr * s + 0.5f); rx = (int)(pr * pr / ry + 0.5f); }
+      if (rx > 15) rx = 15;
+      if (ry > 15) ry = 15;
+      if (rx < 1) rx = 1;
+      if (ry < 1) ry = 1;
+      display.fillCircle(cx, cy, pr, SSD1306_WHITE);       // ã¡à âì ªàã£«®£®
+      fillEll(cx, cy, rx, ry, SSD1306_BLACK);              // í««¨¯á-¦¥«¥ ¯® áª®à®áâ¨
+      display.drawRoundRect(ex, ey, EYE_W, eh, rr, SSD1306_BLACK);
+      display.drawRoundRect(ex + 1, ey + 1, EYE_W - 2, eh - 2, (rr > 1) ? rr - 1 : 0, SSD1306_BLACK);
+    } else {
+      display.fillCircle(cx, cy, pr, SSD1306_BLACK);
+    }
+  }
 
   // Ð²ÐµÑ€Ñ…Ð½ÐµÐµ Ð²ÐµÐºÐ¾
   if (lid > 0) {
@@ -1110,12 +1132,14 @@ static void sceneDrawBook(int lid, unsigned long now) {
   if (sceneStep == 0) {
     dy = 22;                                            // ª­¨£  ¥éñ ­¥ ¯®¤ê¥å « 
   } else if (sceneStep == 1) {
-    int el = stepElapsed(now);
-    dy = (el >= 420) ? 0 : (int)(22.0f * (1.0f - el / 420.0f));
+    float u = (float)stepElapsed(now) / 420.0f;
+    if (u > 1.0f) u = 1.0f;
+    u = u * u * (3.0f - 2.0f * u);                      // ¬ï£ª¨© ¢ë¥§¤ (smoothstep)
+    dy = (int)(22.0f * (1.0f - u));
   } else if (sceneStep >= 4) {
-    int el = stepElapsed(now);
-    dy = (int)(24.0f * el / 750.0f);                    // ª­¨£  ¯ ¤ ¥â
-    if (dy > 24) dy = 24;
+    float u = (float)stepElapsed(now) / 750.0f;
+    if (u > 1.0f) u = 1.0f;
+    dy = (int)(24.0f * u * u);                          // ¯ ¤ ¥â: à §£®­ ª ª £à ¢¨â æ¨ï
   } else {
     dy = 0;
   }
@@ -1416,7 +1440,15 @@ static void eyesTick() {
 
   // ---- Ð¿Ð»Ð°Ð²Ð½Ð¾Ðµ Ð´Ð²Ð¸Ð¶ÐµÐ½Ð¸Ðµ ----
   // v3: ¯àã¦¨­  ¢¬¥áâ® lerp, ¯«îá á ªª ¤ë ¨ ¤ëå ­¨¥; ¯¥à¥å®¤ë âà¥¢®£ /á®­ -> ¢ë¤®å
-  v3Phase(0.033f, (down || panic) ? 0.3f : 1.0f);
+  {
+    static unsigned long v3PrevAt = 0;
+    float dtF = (v3PrevAt && now > v3PrevAt) ? (float)(now - v3PrevAt) / 1000.0f : 0.016f;
+    if (dtF > 0.05f) dtF = 0.05f;
+    if (dtF < 0.004f) dtF = 0.004f;
+    v3PrevAt = now;
+    v3Phase(dtF, (down || panic) ? 0.3f : 1.0f);   // v3: ¦¥«¥-ä¨§¨ª  (dt à¥ «ì­ë©)
+  }
+
   if (panicPrev && !panic)  exhaleUntil = now + 1600UL;
   if (sleepPrev && !sleep_) exhaleUntil = now + 1500UL;
   panicPrev = panic; sleepPrev = sleep_;
