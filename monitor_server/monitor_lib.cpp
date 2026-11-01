@@ -671,13 +671,15 @@ static void setBothTargets(float tx, float ty, float tr) {
 // =============================================================
 #if SCENES_ON
 
-enum SceneName { SC_NONE = 0, SC_PEEK, SC_BOOK, SC_TIKTOK, SC_PC, SC_SELF, SC_COFFEE };
+enum SceneName { SC_NONE = 0, SC_PEEK, SC_BOOK, SC_TIKTOK, SC_PC, SC_SELF, SC_COFFEE,
+                 SC_ALARM, SC_THINK, SC_SNACK, SC_RAIN, SC_BALL, SC_BIRD };
 
-static const uint8_t  SCENE_STEPS[7] = { 0, 4, 5, 5, 4, 5, 4 };
-static const uint16_t SCENE_STEP_MS[7] = { 0, 950, 830, 800, 900, 800, 900 };
+static const uint8_t  SCENE_STEPS[13] = { 0, 4, 5, 5, 4, 5, 4, 5, 5, 5, 5, 5, 5 };
+static const uint16_t SCENE_STEP_MS[13] = { 0, 950, 830, 800, 900, 800, 900, 850, 850, 850, 850, 850, 850 };
 static const unsigned long SCENE_GAP_MS     = 130000UL; // –ø–∞—É–∑–∞ –º–µ–∂–¥—É —Å—Ü–µ–Ω–∞–º–∏ ~2-4 –º–∏–Ω
 static const unsigned long SCENE_GAP_VAR_MS = 150000UL;
-static const char* const SCENE_NAMES[] = { "none", "peek", "book", "tiktok", "pc", "self", "coffee" };
+static const char* const SCENE_NAMES[] = { "none", "peek", "book", "tiktok", "pc", "self", "coffee",
+             "alarm", "think", "snack", "rain", "ball", "bird" };
 
 static int  sceneName   = SC_NONE;
 static int  sceneStep   = 0;
@@ -1005,7 +1007,7 @@ static void sceneSetToken(const char* tok) {
                               dispMode = DM_EYES; lastFrame = 0;
                               if (nextInfoAt < millis() + 60000UL) nextInfoAt = millis() + 60000UL;
                               Serial.println(F("[SCENE] hat forced")); return; }
-  for (int i = SC_PEEK; i <= SC_COFFEE; i++) {
+  for (int i = SC_PEEK; i <= SC_BIRD; i++) {
     if (!strcmp(tok, SCENE_NAMES[i])) {
       forceScene = i;
       sceneStart(i);
@@ -1067,7 +1069,7 @@ static bool sceneTick(unsigned long now) {
       sceneStart(forceScene);
       forceScene = -1;
     } else if (now >= nextSceneAt) {
-      sceneStart(random(1, SC_COFFEE + 1));
+      sceneStart(random(1, SC_BIRD + 1));
     }
     if (sceneName == SC_NONE) return false;
   }
@@ -1102,6 +1104,34 @@ static void sceneTargets() {
       break; }
     case SC_COFFEE: {
       setBothTargets(0, 2, 7);
+      break; }
+    case SC_ALARM: {
+      static const int8_t tp[5][2] = { { 0, 0 }, { 0, -1 }, { -5, -2 }, { 5, -2 }, { 0, 1 } };
+      static const uint8_t tr[5] = { 7, 9, 9, 9, 7 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_THINK: {
+      static const int8_t tp[5][2] = { { -4, -5 }, { -5, -4 }, { -3, -6 }, { 4, -5 }, { 0, 0 } };
+      static const uint8_t tr[5] = { 5, 4, 4, 5, 9 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_SNACK: {
+      static const int8_t tp[5][2] = { { 4, 4 }, { 5, 3 }, { 4, 4 }, { 0, -2 }, { 0, -1 } };
+      static const uint8_t tr[5] = { 7, 7, 7, 9, 7 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_RAIN: {
+      static const int8_t tp[5][2] = { { -2, -4 }, { 2, -4 }, { -2, -3 }, { 2, -3 }, { 0, 2 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 7);
+      break; }
+    case SC_BALL: {
+      static const int8_t tp[5][2] = { { 0, 5 }, { 0, -5 }, { 0, 5 }, { 0, -3 }, { 0, -1 } };
+      static const uint8_t tr[5] = { 7, 7, 7, 9, 7 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_BIRD: {
+      static const int8_t tp[5][2] = { { -5, -5 }, { 0, -5 }, { 5, -5 }, { 3, -2 }, { 0, 1 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 7);
       break; }
     default: break;
   }
@@ -1217,6 +1247,138 @@ static void sceneDrawCoffee(int lid) {
   drawMug((sceneStep >= 1 && sceneStep <= 2) ? -2 : 0);
 }
 
+// ---- v3.2 Ø‡ÆØÎ ----
+
+static void drawBell(int step, unsigned long now) {
+  if (step > 1) return;
+  int dx = ((now / 90UL) & 1) ? 1 : -1;        // ß¢•≠®‚: ™†Á†•‚·Ô ¢´•¢Æ-¢Ø‡†¢Æ
+  display.fillRect(55 + dx, 22, 19, 3, SSD1306_BLACK);          // Æ£Æ´Æ¢Ï•
+  display.fillTriangle(56 + dx, 25, 72 + dx, 25, 64 + dx, 36, SSD1306_BLACK);
+  display.fillCircle(64 + dx, 38, 2, SSD1306_BLACK);            // ÔßÎÁÆ™
+}
+
+static void drawOps(int step, unsigned long now) {
+  if (step < 1 || step > 3 || (sceneStep == 3)) return;
+  if ((now / 260UL) & 1) {                      // "+"
+    display.fillRect(61, 6, 7, 3, SSD1306_BLACK);
+    display.fillRect(63, 4, 3, 7, SSD1306_BLACK);
+  } else {                                      // "="
+    display.fillRect(61, 5, 7, 2, SSD1306_BLACK);
+    display.fillRect(61, 9, 7, 2, SSD1306_BLACK);
+  }
+}
+
+static void drawPizza(int step) {
+  int half = 11 - step * 3;                     // „™„·: 11, 8, 5
+  if (step <= 2) {
+    display.fillTriangle(64 - half, 52, 64 + half, 52, 64, 63, SSD1306_BLACK);
+    drawLN(64 - half, 53, 64 + half, 53, 2);                    // ™Æ‡ÆÁ™†
+    display.fillCircle(64 - half / 2, 58 + step, 2, SSD1306_WHITE);   // Æ´®¢†
+  } else if (step == 3) {
+    display.fillCircle(58, 60, 2, SSD1306_BLACK);               // ™‡ÆË™®
+    display.fillCircle(70, 59, 2, SSD1306_BLACK);
+    display.fillCircle(64, 62, 1, SSD1306_BLACK);
+  }
+}
+
+static void drawRainProp(int step, unsigned long now) {
+  if (step < 1 || step > 3) return;
+  drawCloud(1);                                  // ¨®≠®-Æ°´†Á™Æ ®ß ·Æ≠≠Æ© ·•‡®®
+  for (int i = 0; i < 3; i++) {
+    int x = 55 + i * 8;
+    int y = (now * 2 + i * 37) % 37 + 25;
+    drawLN(x, y, x, y + 3, 2);                   // ™†Ø´Ô
+  }
+}
+
+static void drawBallProp(int step, unsigned long now) {
+  if (step > 3) return;
+  int ph = now % 420;
+  int up = (ph <= 210) ? (ph * 16 / 210) : ((420 - ph) * 16 / 210);   // 0..16
+  int amp = (step == 1 || step == 3) ? 26 : 12;
+  int y = 58 - up * amp / 16;
+  display.fillCircle(64, y, 5, SSD1306_BLACK);
+  display.fillCircle(62, y - 2, 1, SSD1306_WHITE);   // °´®™
+  if (step == 3 && up >= 14) spark(78, 40);
+}
+
+static void drawBirdProp(int step, unsigned long now) {
+  if (step >= 3) { spark(70, 8); return; }
+  int wing = ((now / 120UL) & 1) ? 3 : -1;      // ¢ß¨†Â®
+  int x = (step == 0) ? 53 : (step == 1) ? 63 : 73;
+  int y = 8;
+  display.fillTriangle(x - 4, y + 1, x + 4, y + 1, x, y + 4, SSD1306_BLACK);
+  display.drawLine(x - 3, y + wing, x, y + 1, SSD1306_BLACK);
+  display.drawLine(x + 3, y + wing, x, y + 1, SSD1306_BLACK);
+}
+
+// ---- v3.2 Æ‚‡®·Æ¢È®™® ·Ê•≠ ----
+
+static void sceneDrawAlarm(int lid, unsigned long now) {
+  switch (sceneStep) {
+    case 0:
+      brows = 0;
+      drawClosedEyes();                          // •ÈÒ ·Ø®‚
+      break;
+    case 1:
+      brows = 1;                                 // ÇëíÄã! Ë®‡Æ™Æ
+      drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+      drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+      break;
+    case 2:
+    case 3:
+      brows = 2;                                 // ¨•Á•‚·Ô ® ¢Æ‡Á®‚
+      drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+      drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+      break;
+    default:
+      brows = 0;                                 // ·§†´·Ô, Ø‡®È„‡
+      drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 8);
+      drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 8);
+      break;
+  }
+  drawBell(sceneStep, now);
+}
+
+static void sceneDrawThink(int lid, unsigned long now) {
+  brows = (sceneStep <= 2) ? 2 : 1;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawOps(sceneStep, now);
+  if (sceneStep == 4) { spark(52, 22); spark(76, 22); }         // ùÇêàäÄ!
+}
+
+static void sceneDrawSnack(int lid) {
+  static const uint8_t lw[5] = { 9, 9, 9, 4, 0 };
+  brows = (sceneStep == 3) ? 1 : 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, lw[sceneStep]);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, lw[sceneStep]);
+  drawPizza(sceneStep);
+  if (sceneStep == 4) drawHappyArcs(millis());
+}
+
+static void sceneDrawRain(int lid, unsigned long now) {
+  brows = 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawRainProp(sceneStep, now);
+}
+
+static void sceneDrawBall(int lid, unsigned long now) {
+  brows = (sceneStep == 3) ? 1 : 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawBallProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawBird(int lid, unsigned long now) {
+  brows = 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawBirdProp(sceneStep, now);
+}
+
 static void sceneFrame(unsigned long now, int lid) {
   if (!oledOk) return;
   display.fillScreen(SSD1306_WHITE);
@@ -1228,6 +1390,12 @@ static void sceneFrame(unsigned long now, int lid) {
     case SC_PC:     sceneDrawPc(lid, now);     break;
     case SC_SELF:   sceneDrawSelf(lid, now);   break;
     case SC_COFFEE: sceneDrawCoffee(lid);      break;
+    case SC_ALARM:  sceneDrawAlarm(lid, now);  break;
+    case SC_THINK:  sceneDrawThink(lid, now);  break;
+    case SC_SNACK:  sceneDrawSnack(lid);       break;
+    case SC_RAIN:   sceneDrawRain(lid, now);   break;
+    case SC_BALL:   sceneDrawBall(lid, now);   break;
+    case SC_BIRD:   sceneDrawBird(lid, now);   break;
     default: break;
   }
   display.display();
@@ -1394,6 +1562,60 @@ static void eyesTick() {
               nextLookAt = now + 1200UL;
             }
             break;
+          case 5: // ®™Æ‚†: ‚‡® ‡•ß™®Â ØÆ§·™Æ™† ß‡†Á™Æ¢
+            if (actStep <= 3) {
+              float jx = (random(0, 41) - 20) / 10.0f;
+              setBothTargets(jx, -3.5f, PUPIL_R_BASE + 0.3f);
+              actUntil = now + 200UL;
+            } else {
+              actMode = -1;
+              exhaleUntil = now + 600UL;
+              nextLookAt = now + 900UL;
+            }
+            break;
+          case 6: // double take: ¢´•¢Æ, ™‡•Ø™Æ ¢´•¢Æ - ® ‡†·Ø†Â≠„‚Î• £´†ß†
+            if (actStep == 1) {
+              setBothTargets(-4.0f, 1.0f, 6.0f);
+              actUntil = now + 450UL;
+            } else if (actStep == 2) {
+              setBothTargets(-5.5f, 0.0f, 5.5f);
+              actUntil = now + 350UL;
+            } else if (actStep == 3) {
+              setBothTargets(-3.0f, -1.0f, 9.0f);
+              brows = 1;
+              actUntil = now + 450UL;
+            } else {
+              actMode = -1;
+              nextLookAt = now + 900UL;
+            }
+            break;
+          case 7: // ØÆ§·´„Ë†‚Ï: £´†ß ·Í•Â†´ ¢°Æ™-¢¢•‡Â ® ß†¨•‡
+            if (actStep == 1) {
+              setBothTargets(5.5f, -3.5f, 6.0f);
+              actUntil = now + 800UL;
+            } else if (actStep == 2) {
+              setBothTargets(5.0f, -2.5f, 6.0f);
+              actUntil = now + 300UL;
+            } else {
+              actMode = -1;
+              nextLookAt = now + 900UL;
+            }
+            break;
+          case 8: // Á‚Æ Ì‚Æ ·¢•‡Â„?: ¢ß£´Ô§ ¢ ØÆ‚Æ´Æ™, §¢† ™Æ≠‚‡Æ´Ï≠ÎÂ Ø®™†
+            if (actStep == 1) {
+              setBothTargets(0.0f, -6.5f, 6.0f);
+              actUntil = now + 600UL;
+            } else if (actStep == 2) {
+              setBothTargets(-3.0f, -5.5f, 6.0f);
+              actUntil = now + 300UL;
+            } else if (actStep == 3) {
+              setBothTargets(3.0f, -5.5f, 6.0f);
+              actUntil = now + 300UL;
+            } else {
+              actMode = -1;
+              nextLookAt = now + 900UL;
+            }
+            break;
           default:
             actMode = -1;
         }
@@ -1409,7 +1631,10 @@ static void eyesTick() {
       }
       // –≤—Ä–µ–º—è –æ—Å–æ–±–æ–≥–æ –¥–µ–π—Å—Ç–≤–∏—è
       if (now >= nextActAt) {
-        actMode = (random(0, 9) == 0) ? 4 : random(0, 4);   // v3: ™†¶§Î© §•¢Ô‚Î© - ß•¢Æ™
+        {                                     // v3.2: ™„°®™: 8 Ø‡®¢ÎÁ•™ + ß•¢Æ™
+          int roll = random(0, 9);
+          actMode = (roll == 4) ? 4 : (roll <= 3 ? roll : 5 + (roll - 5) % 4);
+        }
         actStep = 0;
         switch (actMode) {
           case 0: // "–∑–∞–º–µ—á–∞–µ—Ç —Ç–µ–±—è": –∑—Ä–∞—á–∫–∏ –∫ —Ü–µ–Ω—Ç—Ä—É –∏ —Ä–∞—Å—à–∏—Ä—è—é—Ç—Å—è, –±—Ä–æ–≤–∏ –≤–≤–µ—Ä—Ö
@@ -1728,7 +1953,7 @@ void monitorSetup() {
 #if SCENES_ON
   nextSceneAt = millis() + 30000UL;   // –ø–µ—Ä–≤–∞—è —Å—Ü–µ–Ω–∞ "–∂–∏–≤–æ–≥–æ –¥–Ω—è" ~—á–µ—Ä–µ–∑ 30 —Å–µ–∫
   Serial.println(F("[SCENE] demo via USB: send line E|<name>"));
-  Serial.println(F("[SCENE] names: peek | book | tiktok | pc | self | coffee | hat | wake | yawn | none"));
+  Serial.println(F("[SCENE] names: peek | book | tiktok | pc | self | coffee | alarm | think | snack | rain | ball | bird | hat | wake | yawn | none"));
 #endif
 
   // –∫–æ—Ä–æ—Ç–∫–∏–π "—è –∂–∏–≤" –±–∏–ø - –∏ –ø—Ä–æ–≤–µ—Ä–∫–∞ –ø–∏—â–∞–ª–∫–∏
