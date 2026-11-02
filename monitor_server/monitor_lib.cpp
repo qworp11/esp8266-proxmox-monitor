@@ -45,10 +45,11 @@ const uint8_t PIN_BUZZER = D5;  // D5 ╨┐╨╛╨╗╨╜╨╛╤Б╤В╤М╤О ╤Б╨▓╨╛╨▒╨╛╨┤╨╜╤Л╨╣ ╨┐╨╕
 struct BeepStep { uint16_t freq; uint16_t ms; }; // freq=0 ╨┐╨░╤Г╨╖╨░; {0,0} ╨║╨╛╨╜╨╡╤Ж (╨╜╨╡ ╤Ж╨╕╨║╨╗)
 static const BeepStep PATTERN_SIREN[]   = { {2200, 700}, {1500, 450} };                          // ╨│╨╕╨┐╨╡╤А╨▓╨╕╨╖╨╛╤А: ╨▓╨╛╨╣
 static const BeepStep PATTERN_VM[]      = { {1100,120},{0,110},{1100,120},{0,110},{1100,120},{0,120},{1600,160},{0,9000} }; // VM ╤Г╨┐╨░╨╗╨░: 3 ╨┐╨╕╤Б╨║╨░
+static const BeepStep PATTERN_DISK[]   = { {700,150},{0,110},{700,150},{0,2900} };                  // ╨┤╨╕╤Б╨║╨╕: ╨╜╨╕╨╖╨║╨╕╨╣ ╨┤╨▓╨╛╨╣╨╜╨╛╨╣ ╨│╤Г╨┤╨╛╨║
 static const BeepStep PATTERN_RECOVER[] = { {1400,90},{0,50},{1900,140},{0,0} };                  // ╨▓╤Б╤С ╤Е╨╛╤А╨╛╤И╨╛
 static const BeepStep PATTERN_BOOT[]    = { {2000,70},{0,40},{1600,90},{0,0} };                   // "╤П ╨╢╨╕╨▓"
 
-enum BeepMode { BM_NONE, BM_SIREN, BM_VM, BM_RECOVER, BM_BOOT };
+enum BeepMode { BM_NONE, BM_SIREN, BM_VM, BM_DISK, BM_RECOVER, BM_BOOT };
 static BeepMode        beepMode = BM_NONE;
 static const BeepStep* beepPat  = nullptr;
 static uint8_t         beepLen = 0, beepIdx = 0;
@@ -59,6 +60,7 @@ static const char* beepName(BeepMode m) {
   switch (m) {
     case BM_SIREN:   return "siren (hypervisor down)";
     case BM_VM:      return "vm-alarm (a VM is down)";
+    case BM_DISK:    return "disk-alarm (storage offline / smart FAILED)";
     case BM_RECOVER: return "recover chirp";
     case BM_BOOT:    return "boot chirp";
     default:         return "-";
@@ -155,17 +157,17 @@ struct Pupil {
 static Pupil eyeL = { 0, 0, 0, 0, PUPIL_R_BASE, PUPIL_R_BASE };
 static Pupil eyeR = { 0, 0, 0, 0, PUPIL_R_BASE, PUPIL_R_BASE };
 
-// ---- v3 living layer: пружина, саккады, дыхание ----
-static float svelL[3] = { 0, 0, 0 };   // скорости пружины (px, py, pr) левый глаз
-static float svelR[3] = { 0, 0, 0 };   // правый глаз
-static float gAx = 0.0f, gAy = 0.0f;   // микро-саккады (смещение зрачка при отрисовке)
-static int   gEhOff = 0;               // дыхание: сдвиг всех глаз по y, -1..1
-static unsigned long exhaleUntil = 0;  // прищур-облегчение / потягивание
+// ---- v3 living layer: я┐╜я┐╜ужия┐╜я┐╜, сакя┐╜я┐╜я┐╜я┐╜, я┐╜я┐╜ханя┐╜я┐╜ ----
+static float svelL[3] = { 0, 0, 0 };   // скоя┐╜я┐╜я┐╜ я┐╜я┐╜ужия┐╜я┐╜ (px, py, pr) я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜
+static float svelR[3] = { 0, 0, 0 };   // я┐╜равя┐╜ я┐╜я┐╜я┐╜я┐╜
+static float gAx = 0.0f, gAy = 0.0f;   // я┐╜я┐╜я┐╜я┐╜-сакя┐╜я┐╜я┐╜я┐╜ (смещеня┐╜я┐╜ я┐╜я┐╜чка я┐╜я┐╜ я┐╜я┐╜я┐╜совя┐╜я┐╜)
+static int   gEhOff = 0;               // я┐╜я┐╜ханя┐╜я┐╜: сдвя┐╜я┐╜ я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜ y, -1..1
+static unsigned long exhaleUntil = 0;  // я┐╜я┐╜я┐╜я┐╜я┐╜-я┐╜я┐╜я┐╜я┐╜я┐╜ченя┐╜я┐╜ / я┐╜я┐╜я┐╜ягия┐╜я┐╜я┐╜я┐╜я┐╜
 static bool panicPrev = false;
 static bool sleepPrev = false;
-static unsigned long wakeUntil = 0;    // E|wake: не спать 2 минуты
-static unsigned long gHappyUntil = 0;  // радость-дужки: глаза улыбаются N мс после беды
-static uint8_t blinkSlow = 0;          // зевок: blink растягивается в 240мс * k
+static unsigned long wakeUntil = 0;    // E|wake: я┐╜я┐╜ спая┐╜я┐╜ 2 я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜
+static unsigned long gHappyUntil = 0;  // радя┐╜я┐╜я┐╜я┐╜-я┐╜ужкя┐╜: я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜ыбая┐╜я┐╜я┐╜я┐╜ N я┐╜я┐╜ я┐╜я┐╜сле я┐╜я┐╜я┐╜я┐╜
+static uint8_t blinkSlow = 0;          // я┐╜я┐╜я┐╜я┐╜я┐╜: blink я┐╜я┐╜я┐╜ягия┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜ 240я┐╜я┐╜ * k
 
 static void sstep(float& x, float& v, float tgt, float k, float d, float dt) {
   v += (k * (tgt - x) - d * v) * dt;
@@ -173,7 +175,7 @@ static void sstep(float& x, float& v, float tgt, float k, float d, float dt) {
   x += v * dt;
 }
 
-// v3: пружинная догонка целей + микро-саккады + дыхание (раз в кадр)
+// v3: я┐╜я┐╜ужия┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ целя┐╜я┐╜ + я┐╜я┐╜я┐╜я┐╜-сакя┐╜я┐╜я┐╜я┐╜ + я┐╜я┐╜ханя┐╜я┐╜ (раз я┐╜ я┐╜я┐╜я┐╜я┐╜)
 static void v3Phase(float dt, float sacAmp) {
   static float ph1 = 0.0f, ph2 = 0.0f, ph3 = 0.0f;
   ph1 += dt * 2.0f * PI / 1.7f;  if (ph1 > 2 * PI) ph1 -= 2 * PI;
@@ -182,9 +184,9 @@ static void v3Phase(float dt, float sacAmp) {
   gAx = sacAmp * 0.6f * sinf(ph1);
   gAy = sacAmp * 0.35f * sinf(ph2 + 1.2f);
   gEhOff = (int)roundf(0.9f * sinf(ph3));
-  sstep(eyeL.px, svelL[0], eyeL.tx, 125.0f, 8.0f, dt);   // позиция: перелёт ~30%
+  sstep(eyeL.px, svelL[0], eyeL.tx, 125.0f, 8.0f, dt);   // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜: я┐╜я┐╜реля┐╜я┐╜ ~30%
   sstep(eyeL.py, svelL[1], eyeL.ty, 125.0f, 8.0f, dt);
-  sstep(eyeL.pr, svelL[2], eyeL.tr, 100.0f, 6.0f, dt);   // размер зрачка: желе
+  sstep(eyeL.pr, svelL[2], eyeL.tr, 100.0f, 6.0f, dt);   // разя┐╜я┐╜я┐╜ я┐╜я┐╜чка: я┐╜я┐╜я┐╜я┐╜
   sstep(eyeR.px, svelR[0], eyeR.tx, 125.0f, 8.0f, dt);
   sstep(eyeR.py, svelR[1], eyeR.ty, 125.0f, 8.0f, dt);
   sstep(eyeR.pr, svelR[2], eyeR.tr, 100.0f, 6.0f, dt);
@@ -201,7 +203,7 @@ static int  actMode = -1;        // -1 ╨╜╨╡╤В, 0 "╨╖╨░╨╝╨╡╤З╨░╨╡╤В", 1 ╨▓╨╗╨╡╨▓╨
 static int  actStep = 0;
 static unsigned long actUntil = 0;
 static unsigned long lastFrame = 0;
-static const uint8_t FRAME_MS = 16; // физика 60 Гц; экран даёт ~35-40 к/с по I2C
+static const uint8_t FRAME_MS = 16; // физя┐╜я┐╜я┐╜ 60 я┐╜я┐╜; я┐╜я┐╜ран я┐╜я┐╜я┐╜я┐╜ ~35-40 я┐╜/я┐╜ я┐╜я┐╜ I2C
 
 // =============================================================
 // ╨Ф╨Р╨Э╨Э╨л╨Х ╨б╨Х╨а╨Т╨Х╨а╨Р: ╨╝╨╕╨║╤А╨╛╤Б╨╡╤А╨▓╨╕╤Б pxmon ╨╖╨░╨┐╤Г╤Й╨╡╨╜ ╨╜╨░ TARGET:8123
@@ -233,7 +235,8 @@ struct ServerData {
   bool backup;           // 1 - ╨╕╨┤╤С╤В vzdump
   int8_t doy;            // ╨┤╨╡╨╜╤М ╨│╨╛╨┤╨░ 1..365 ╨╛╤В pxmon (0 = ╨╜╨╡ ╨┐╤А╨╕╤Б╤Л╨╗╨░╨╡╤В╤Б╤П; 1-7 = ╤И╨░╨┐╨║╨░)
   VmSlide vms[5]; int8_t nVms;
-  char dName[5][9]; float dUsed[5], dMax[5]; int8_t nDisks;
+  char dName[5][9]; float dUsed[5], dMax[5]; int8_t nDisks; uint8_t dBad[5];
+  int8_t nDiskBad, hFail;  // v3.3: ╨╛╤В╨▓╨░╨╗ ╤Б╤В╨╛╤А╨░╨┤╨╢╨░ / ╤З╨╕╤Б╨╗╨╛ ╨┤╨╕╤Б╨║╨╛╨▓ ╤Б SMART FAILED
 };
 static ServerData g_srv;
 static char statsBuf[720];
@@ -259,7 +262,7 @@ static void parseStats() {
   while (cur && *cur) {
     char* nl = strchr(cur, '\n');
     if (nl) *nl = 0;
-    if (*cur == 'S' || *cur == 'V' || *cur == 'D' || *cur == 'E') {
+    if (*cur == 'S' || *cur == 'V' || *cur == 'D' || *cur == 'H' || *cur == 'E') {
       char* p = cur + 2;  // ╨┐╨╛╤Б╨╗╨╡ ╨╝╨░╤А╨║╨╡╤А╨░ "X|"
       char* t;
       if (*cur == 'S') {
@@ -286,7 +289,11 @@ static void parseStats() {
         t = nextTok(p, '|');  strlcpy(g_srv.dName[g_srv.nDisks], t ? t : "?", 9);
         t = nextTok(p, '|');  g_srv.dUsed[g_srv.nDisks] = t ? atof(t) : 0.0f;
         t = nextTok(p, '|');  g_srv.dMax[g_srv.nDisks] = t ? atof(t) : 0.0f;
+        t = nextTok(p, '|');                      // v3.3: 'a' ╨╢╨╕╨▓ / 'x' ╨╛╤В╨▓╨░╨╗
+        if (t && t[0] == 'x') { g_srv.dBad[g_srv.nDisks] = 1; g_srv.nDiskBad++; }
         g_srv.nDisks++;
+      } else if (*cur == 'H') {
+        g_srv.hFail = (int8_t)atoi(cur + 2);      // v3.3: SMART FAILED ╨╜╨░ ╤Д╨╕╨╖. ╨┤╨╕╤Б╨║╨░╤Е
       } else if (*cur == 'E') {
 #if SCENES_ON
         sceneSetToken(cur + 2);   // "E|peek" ╨╕ ╤В.╨┐. - ╨┤╨╡╨╝╨╛-╤Д╨╛╤А╤Б ╤Б╤Ж╨╡╨╜╤Л/╤И╨░╨┐╨║╨╕
@@ -304,7 +311,7 @@ static bool statsFetch() {
   WiFiClient wc;
   HTTPClient http;
   if (!http.begin(wc, url)) return false;
-  http.setTimeout(4000);
+  http.setTimeout(8000);  // v3.3: SMART-╤Б╨║╨░╨╜ pxmon ╨╝╨╛╨╢╨╡╤В ╨╛╤В╨▓╨╡╤В╨╕╤В╤М ╨┤╨╛ ~4╤Б ╨┐╤А╨╕ ╤А╨░╨╖╨╛╨│╤А╨╡╨▓╨╡ ╨║╤Н╤И╨░
   int code = http.GET();
   if (code == 200) {
     String body = http.getString();
@@ -322,7 +329,11 @@ static bool statsFetch() {
     Serial.print(F(" backup="));
     Serial.print(g_srv.backup ? 1 : 0);
     Serial.print(F(" doy="));
-    Serial.println((int)g_srv.doy);
+    Serial.print((int)g_srv.doy);
+    Serial.print(F(" dsbad="));
+    Serial.print((int)g_srv.nDiskBad);
+    Serial.print(F(" hfail="));
+    Serial.println((int)g_srv.hFail);
   } else {
     http.end();
     Serial.print(F("[HTTP] stats fail, code "));
@@ -470,7 +481,13 @@ static void drawSlideDisks() {
     snprintf(buf, sizeof(buf), "%s/%d", a, (int)(g_srv.dMax[i] + 0.5f));
     display.setCursor(80, y);
     display.print(buf);
-    drawBar(52, y + 1, 26, 7, g_srv.dMax[i] > 0 ? g_srv.dUsed[i] / g_srv.dMax[i] : 0.0f);
+    float pctF = g_srv.dMax[i] > 0 ? g_srv.dUsed[i] / g_srv.dMax[i] : 0.0f;
+    if (g_srv.dBad[i]) pctF = 1.0f;                        // ╨╛╤В╨▓╨░╨╗╨╕╨╗╤Б╤П: ╨▒╨░╤А ╨╖╨░╨╗╨╕╤В
+    drawBar(52, y + 1, 26, 7, pctF);
+    if (g_srv.dBad[i] || pctF >= 0.9f) {                   // v3.3: "!"-╨╝╨╡╤В╨║╨░ ╨▒╨╡╨┤╤Л
+      display.fillRect(64, y + 2, 2, 3, SSD1306_WHITE);
+      display.fillRect(64, y + 6, 2, 1, SSD1306_WHITE);
+    }
   }
   slideFooter();
   display.display();
@@ -500,7 +517,7 @@ static void thickLine(int x0, int y0, int x1, int y1, int t) {
 
 static void fillEll(int cx, int cy, int rx, int ry, uint16_t col);
 static void drawEye(int ex, int ey, int eh, const Pupil& e, int lid, int lower) {
-  ey += gEhOff;                              // v3: дыхание
+  ey += gEhOff;                              // v3: я┐╜я┐╜ханя┐╜я┐╜
   int rr = EYE_W / 2;                        // ╤А╨░╨┤╨╕╤Г╤Б ╨║╨░╨┐╤Б╤Г╨╗╤Л
   if (rr > eh / 2) rr = eh / 2;
   const int cy0 = ey + eh / 2;
@@ -520,7 +537,7 @@ static void drawEye(int ex, int ey, int eh, const Pupil& e, int lid, int lower) 
   display.fillRoundRect(ex, ey, EYE_W, eh, rr, SSD1306_WHITE);
   // ╨╖╤А╨░╤З╨╛╨║ + ╨▒╨╗╨╕╨║
   {
-    // v3 желе: зрачок сплющивается вдоль движения, в покое - идеальный круг
+    // v3 я┐╜я┐╜я┐╜я┐╜: я┐╜я┐╜чок спля┐╜щивя┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜, я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ - я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜
     const float* sv = (&e == &eyeL) ? svelL : svelR;
     float vx = fabsf(sv[0]), vy = fabsf(sv[1]);
     if (pr > 2 && (vx > 8.0f || vy > 8.0f)) {
@@ -533,8 +550,8 @@ static void drawEye(int ex, int ey, int eh, const Pupil& e, int lid, int lower) 
       if (ry > 15) ry = 15;
       if (rx < 1) rx = 1;
       if (ry < 1) ry = 1;
-      display.fillCircle(cx, cy, pr, SSD1306_WHITE);       // убрать круглого
-      fillEll(cx, cy, rx, ry, SSD1306_BLACK);              // эллипс-желе по скорости
+      display.fillCircle(cx, cy, pr, SSD1306_WHITE);       // я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜угля┐╜я┐╜я┐╜
+      fillEll(cx, cy, rx, ry, SSD1306_BLACK);              // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜-я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜ скоя┐╜я┐╜я┐╜
       display.drawRoundRect(ex, ey, EYE_W, eh, rr, SSD1306_BLACK);
       display.drawRoundRect(ex + 1, ey + 1, EYE_W - 2, eh - 2, (rr > 1) ? rr - 1 : 0, SSD1306_BLACK);
     } else {
@@ -556,7 +573,7 @@ static void drawEye(int ex, int ey, int eh, const Pupil& e, int lid, int lower) 
   }
   // ╨║╨╛╨╜╤В╤Г╤А ╨┐╨╛╨▓╨╡╤А╤Е ╨▓╨╡╨║ ╨▓╨╛╤Б╤Б╤В╨░╨╜╨░╨▓╨╗╨╕╨▓╨░╨╡╤В ╨┤╤Г╨│╨╕
   display.drawRoundRect(ex, ey, EYE_W, eh, rr, SSD1306_BLACK);
-  display.drawRoundRect(ex + 1, ey + 1, EYE_W - 2, eh - 2, (rr > 1) ? rr - 1 : 0, SSD1306_BLACK);   // v3: контур 2px
+  display.drawRoundRect(ex + 1, ey + 1, EYE_W - 2, eh - 2, (rr > 1) ? rr - 1 : 0, SSD1306_BLACK);   // v3: я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ 2px
 
   // ╨▒╤А╨╛╨▓╨╕
   // v2: ╨▒╤А╨╛╨▓╤М ╤Б╨╗╨╡╨┤╤Г╨╡╤В ╨╖╨░ ╨│╨╗╨░╨╖╨╛╨╝ (ey-4); ╨┐╤А╨╕ ey<=12 ╤Н╤В╨╛ ╤А╨╛╨▓╨╜╨╛ BROW_Y - ╨┐╨╛╨▓╨╡╨┤╨╡╨╜╨╕╨╡ v1 ╨╜╨╡ ╨╝╨╡╨╜╤П╨╡╤В╤Б╤П
@@ -602,11 +619,12 @@ static void drawMouth(int variant) {
   }
 }
 
-// ╨▒╨╡╨┤╨░ ╨┤╨╗╤П ╨│╨╗╨░╨╖: ╨│╨╕╨┐╨╡╤А╨▓╨╕╨╖╨╛╤А ╨╜╨╡╨┤╨╛╤Б╤В╤Г╨┐╨╡╨╜ ╨Ш╨Ы╨Ш ╤Е╨╛╤В╤М ╨╛╨┤╨╜╨░ VM ╨╜╨╡ ╤А╨░╨▒╨╛╤В╨░╨╡╤В
+// ╨▒╨╡╨┤╨░ ╨┤╨╗╤П ╨│╨╗╨░╨╖: ╨│╨╕╨┐╨╡╤А╨▓╨╕╨╖╨╛╤А/VM ╨Ш╨Ы╨Ш ╨┤╨╕╤Б╨║╨╕: ╤Б╤В╨╛╤А╨░╨┤╨╢ ╨╛╤В╨▓╨░╨╗╨╕╨╗╤Б╤П, SMART FAILED
 static bool eyesInTrouble() {
   if (state != ST_OK) return true;
   if (!g_srv.valid) return false;
   for (int i = 0; i < g_srv.nVms; i++) if (!g_srv.vms[i].up) return true;
+  if (g_srv.nDiskBad > 0 || g_srv.hFail > 0) return true;   // v3.3: ╨┤╨╕╤Б╨║╨╕ ╨▓ ╨▒╨╡╨┤╨╡
   return false;
 }
 
@@ -625,7 +643,7 @@ static void eyesDrawFrame(int lid, int lower, int mouth) {
   if (!trouble)       { ey = EYE_OK_Y; eh = EYE_OK_H; }
   else                { ey = EYE_BAD_Y; eh = EYE_BAD_H; }
   if (!trouble && (long)(gHappyUntil - millis()) > 0) {
-    drawHappyArcs(millis());                   // v3: беда прошла - глаза улыбаются
+    drawHappyArcs(millis());                   // v3: я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜шла - я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜ыбая┐╜я┐╜я┐╜я┐╜
   } else {
     drawEye(EYE1_X, ey, eh, eyeL, lid, lower);
     drawEye(EYE2_X, ey, eh, eyeR, lid, lower);
@@ -763,17 +781,17 @@ static void drawLN(int x0, int y0, int x1, int y1, int t) {
   if (t > 1) display.drawLine(x0, y0 + 1, x1, y1 + 1, SSD1306_BLACK);
 }
 
-// ---- v3 проп: кружка-силуэт, ручка-"бублик", белый блик ----
+// ---- v3 я┐╜роп: я┐╜я┐╜ужкя┐╜-силя┐╜я┐╜я┐╜, я┐╜я┐╜чка-"я┐╜убля┐╜я┐╜", я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜ ----
 static void drawMug(int dy) {
   const int top = 44 + dy, bot = 60 + dy;
   const int midy = (top + bot) / 2;
   display.fillRoundRect(55, top, 21, bot - top, 4, SSD1306_BLACK);
-  display.fillCircle(54, midy, 5, SSD1306_BLACK);   // ручка
+  display.fillCircle(54, midy, 5, SSD1306_BLACK);   // я┐╜я┐╜чка
   display.fillCircle(54, midy, 2, SSD1306_WHITE);
-  display.fillRect(59, top + 4, 2, (bot - top) - 7, SSD1306_WHITE);   // блик
+  display.fillRect(59, top + 4, 2, (bot - top) - 7, SSD1306_WHITE);   // я┐╜я┐╜я┐╜я┐╜
 }
 
-// ---- v3 проп: открытая книга, белые страницы + контур 2px + строки ----
+// ---- v3 я┐╜роп: я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜, я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜раня┐╜я┐╜я┐╜ + я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ 2px + я┐╜я┐╜рокя┐╜ ----
 static void drawBook(int dy) {
   const int top = 44 + dy, bot = 63 + dy;
   display.fillTriangle(35, top + 2, 63, top, 63, bot - 1, SSD1306_WHITE);
@@ -784,14 +802,14 @@ static void drawBook(int dy) {
   drawLN(35, bot - 1, 63, bot - 1, 2);
   drawLN(65, top, 93, top + 2, 2);
   drawLN(65, bot - 1, 93, bot - 1, 2);
-  display.fillRect(34, top + 2, 2, bot - top - 3, SSD1306_BLACK);   // внешний край
+  display.fillRect(34, top + 2, 2, bot - top - 3, SSD1306_BLACK);   // я┐╜я┐╜я┐╜шния┐╜ я┐╜рай
   display.fillRect(92, top + 2, 2, bot - top - 3, SSD1306_BLACK);
-  display.fillRect(63, top, 3, bot - top - 1, SSD1306_BLACK);       // корешок
-  drawLN(40, 52 + dy, 58, 50 + dy, 2);                              // строки
+  display.fillRect(63, top, 3, bot - top - 1, SSD1306_BLACK);       // я┐╜я┐╜я┐╜шок
+  drawLN(40, 52 + dy, 58, 50 + dy, 2);                              // я┐╜я┐╜рокя┐╜
   drawLN(70, 50 + dy, 88, 52 + dy, 2);
 }
 
-// ---- v3 проп: телефон-силуэт, белый экран, play ----
+// ---- v3 я┐╜роп: теля┐╜фон-силя┐╜я┐╜я┐╜, я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜ран, play ----
 static void drawPhoneV3(int ph) {
   display.fillRoundRect(53, ph, 23, 33, 4, SSD1306_BLACK);
   display.fillRect(56, ph + 4, 17, 21, SSD1306_WHITE);
@@ -808,14 +826,14 @@ static void drawHeartV3(float hy, float hs) {
   display.fillTriangle(63 - rw, cy - 1, 65 + rw, cy - 1, 64, cy + tip, SSD1306_BLACK);
 }
 
-// ---- v3: смеющиеся глаза (дышащие дужки) ----
+// ---- v3: смея┐╜щиея┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ (я┐╜я┐╜я┐╜щие я┐╜ужкя┐╜) ----
 static void drawHappyArcs(unsigned long now) {
   int dy = (int)roundf(0.8f * sinf(now * 0.0031f));
   arcThin(EYE1_X + 15, 32 + dy, 10, 8, 200, 340, 3);
   arcThin(EYE2_X + 15, 32 + dy, 10, 8, 200, 340, 3);
 }
 
-// ---- v3 проп: клавиатура - один сплошной ряд из 6 клавиш ----
+// ---- v3 я┐╜роп: я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ - я┐╜я┐╜я┐╜я┐╜ спля┐╜шноя┐╜ я┐╜я┐╜ я┐╜я┐╜ 6 я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ ----
 static void drawKbdV3(unsigned long now, int pressedKey, bool shake) {
   int dx = shake ? (int)(1.5f * sinf(now * 0.045f)) : 0;
   for (int i = 0; i < 6; i++) {
@@ -840,12 +858,12 @@ static void drawCursorV3(int x, int y) {
   display.fillTriangle(x + 3, y + 5, x + 6, y + 9, x + 8, y + 7, SSD1306_BLACK);
 }
 
-// ---- v3 проп: мысленный пузырь 2px, точки 1..3 и "!" ----
+// ---- v3 я┐╜роп: я┐╜я┐╜слея┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ 2px, я┐╜чки 1..3 я┐╜ "!" ----
 static void drawThoughtV3(int phase, float pop) {
   int rx = 8 + (int)(8.0f * pop + 0.5f);        // 10..16
   fillEll(64, 8, rx, 8, SSD1306_BLACK);
   if (rx > 3) fillEll(64, 8, rx - 2, 6, SSD1306_WHITE);
-  fillEll(64, 17, 3, 3, SSD1306_BLACK);         // хвостик
+  fillEll(64, 17, 3, 3, SSD1306_BLACK);         // хвоя┐╜тик
   fillEll(64, 17, 1, 1, SSD1306_WHITE);
   fillEll(58, 21, 2, 2, SSD1306_BLACK);
   fillEll(58, 21, 1, 1, SSD1306_WHITE);
@@ -879,7 +897,7 @@ static void drawClosedEyes() {
   display.fillRect(81, 43, 28, 2, SSD1306_BLACK);
 }
 
-static void drawCloud(int pop) {                             // pop 1..3: надувание
+static void drawCloud(int pop) {                             // pop 1..3: я┐╜я┐╜я┐╜увая┐╜я┐╜я┐╜
   float s = pop / 3.0f;
   const int cx = 64, cyb = 26;
   int ccy = cyb - (int)(10.0f * s + 0.5f);
@@ -890,7 +908,7 @@ static void drawCloud(int pop) {                             // pop 1..3: надува
   fillEll(cx, ccy, crx, cry, SSD1306_BLACK);
   fillEll(cx - sdx, scy, srx, sry, SSD1306_BLACK);
   fillEll(cx + sdx, scy, srx, sry, SSD1306_BLACK);
-  if (crx > 3) fillEll(cx, ccy, crx - 2, cry - 2, SSD1306_WHITE);          // кант 2px
+  if (crx > 3) fillEll(cx, ccy, crx - 2, cry - 2, SSD1306_WHITE);          // я┐╜я┐╜я┐╜я┐╜ 2px
   if (srx > 3) {
     fillEll(cx - sdx, scy, srx - 2, sry - 2, SSD1306_WHITE);
     fillEll(cx + sdx, scy, srx - 2, sry - 2, SSD1306_WHITE);
@@ -909,39 +927,39 @@ static void drawDreamZzz() {
 }
 
 static void drawDreamServer(int ph) {
-  display.fillRoundRect(52, 7, 25, 14, 2, SSD1306_BLACK);     // корпус-силуэт
+  display.fillRoundRect(52, 7, 25, 14, 2, SSD1306_BLACK);     // я┐╜я┐╜я┐╜я┐╜я┐╜-силя┐╜я┐╜я┐╜
   for (int yy = 10; yy <= 18; yy += 4) display.fillRect(55, yy, 11, 2, SSD1306_WHITE);
-  display.fillRect(69, (ph == 0) ? 10 : 14, 4, 3, SSD1306_WHITE);   // мигающая лампа
+  display.fillRect(69, (ph == 0) ? 10 : 14, 4, 3, SSD1306_WHITE);   // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜
 }
 
 static void drawDreamFish(int ph) {
   int dy = ph ? -1 : 1;
   int y = 14 + dy;
-  display.fillRoundRect(52, y - 4, 18, 9, 4, SSD1306_BLACK);  // тело
+  display.fillRoundRect(52, y - 4, 18, 9, 4, SSD1306_BLACK);  // теля┐╜
   display.fillTriangle(70, y - 4, 77, y - 7 - dy, 77, y + 7 - dy, SSD1306_BLACK);
-  display.fillRect(56, y - 1, 2, 2, SSD1306_WHITE);           // глаз
-  display.fillRect(60, y, 7, 1, SSD1306_WHITE);               // рот
+  display.fillRect(56, y - 1, 2, 2, SSD1306_WHITE);           // я┐╜я┐╜я┐╜я┐╜
+  display.fillRect(60, y, 7, 1, SSD1306_WHITE);               // я┐╜я┐╜
 }
 
 static void drawDreamCat(int ph) {
   int ear = ph ? 1 : 0;
-  display.fillRoundRect(52, 9, 23, 19, 9, SSD1306_BLACK);           // голова
-  display.fillTriangle(54, 14, 50, 5 - ear, 61, 10, SSD1306_BLACK); // уши
+  display.fillRoundRect(52, 9, 23, 19, 9, SSD1306_BLACK);           // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜
+  display.fillTriangle(54, 14, 50, 5 - ear, 61, 10, SSD1306_BLACK); // я┐╜я┐╜
   display.fillTriangle(66, 10, 76, 5 - ear, 72, 14, SSD1306_BLACK);
-  display.fillRect(55, 18, 6, 2, SSD1306_WHITE);                    // спящие глаза
+  display.fillRect(55, 18, 6, 2, SSD1306_WHITE);                    // я┐╜я┐╜щие я┐╜я┐╜я┐╜я┐╜я┐╜
   display.fillRect(65, 18, 6, 2, SSD1306_WHITE);
-  display.fillTriangle(61, 21, 66, 21, 63, 23, SSD1306_WHITE);      // носик
-  display.fillRect(47, 20, 5, 2, SSD1306_BLACK);                    // усы
+  display.fillTriangle(61, 21, 66, 21, 63, 23, SSD1306_WHITE);      // я┐╜я┐╜сик
+  display.fillRect(47, 20, 5, 2, SSD1306_BLACK);                    // я┐╜я┐╜я┐╜
   display.fillRect(76, 20, 5, 2, SSD1306_BLACK);
-  if (ph) qcurve(72, 25, 80, 29, 82, 22, 2);                        // хвост
+  if (ph) qcurve(72, 25, 80, 29, 82, 22, 2);                        // хвоя┐╜я┐╜
   else    qcurve(72, 25, 79, 30, 80, 17, 2);
 }
 
 static void drawDreamHat(int ph) {
   int dy = ph ? 1 : 0;
   display.fillTriangle(64, 6 + dy, 55, 22 + dy, 73, 22 + dy, SSD1306_BLACK);
-  display.fillCircle(64, 5 + dy, 5, SSD1306_BLACK);           // помпон
-  display.fillRect(54, 21 + dy, 21, 4, SSD1306_BLACK);        // козырёк
+  display.fillCircle(64, 5 + dy, 5, SSD1306_BLACK);           // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜
+  display.fillRect(54, 21 + dy, 21, 4, SSD1306_BLACK);        // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜
   display.fillRect(56, 25 + dy, 17, 2, SSD1306_BLACK);
   if (ph) spark(50, 10);
   else    spark(78, 12);
@@ -957,13 +975,13 @@ static void drawDreams() {
   }
 }
 
-// ---------- машина сцен ----------
+// ---------- я┐╜я┐╜шиня┐╜ я┐╜цен ----------
 
 static void sceneStart(int s) {
   sceneName = s;
   sceneStep = 0;
   sceneStepAt = millis() + SCENE_STEP_MS[s];
-  // v3: сцена начинается из мигания (blink-телепорт)
+  // v3: я┐╜ценя┐╜ я┐╜я┐╜чиня┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ (blink-теля┐╜я┐╜я┐╜я┐╜я┐╜)
   blinkActive = true; blinkStart = millis();
   doubleBlink = false; blinkSecond = false;
   blinkSlow = 0;
@@ -984,14 +1002,14 @@ static void sceneClear() {
 
 static void sceneSetToken(const char* tok) {
   if (!tok || !*tok) return;
-  if (!strcmp(tok, "wake")) {          // v3: не спать 2 минуты
+  if (!strcmp(tok, "wake")) {          // v3: я┐╜я┐╜ спая┐╜я┐╜ 2 я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜
     wakeUntil = millis() + 120000UL;
     sleepActive = false; sleepReset();
     dispMode = DM_EYES; lastFrame = 0;
     Serial.println(F("[SCENE] wake 2min"));
     return;
   }
-  if (!strcmp(tok, "yawn")) {          // v3: вызвать зевок по команде
+  if (!strcmp(tok, "yawn")) {          // v3: я┐╜ызвя┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜
     actMode = 4; actStep = 1;
     actUntil = millis() + 2500UL;
     blinkSlow = 8; blinkActive = true; blinkStart = millis();
@@ -1077,7 +1095,7 @@ static bool sceneTick(unsigned long now) {
 }
 
 // ╨╖╤А╨░╤З╨║╨╕ ╨╜╨░ ╤Ж╨╡╨╗╨╕ ╤Б╤Ж╨╡╨╜╤Л (mock-╨╖╨╜╨░╤З╨╡╨╜╨╕╤П px/py/r ╨┐╨╛ ╤И╨░╨│╨░╨╝)
-// v3: цели сцен (px, py, r) по шагам
+// v3: целя┐╜ я┐╜цен (px, py, r) я┐╜я┐╜ шагя┐╜я┐╜
 static void sceneTargets() {
   switch (sceneName) {
     case SC_PEEK: {
@@ -1086,7 +1104,7 @@ static void sceneTargets() {
       break; }
     case SC_BOOK: {
       static const int8_t tp[5][2] = { { -5, 1 }, { 5, 1 }, { -3, 3 }, { 3, 3 }, { 0, -2 } };
-      static const uint8_t tr[5]   = { 6, 6, 6, 6, 9 };     // 9 = широко: "ах!"
+      static const uint8_t tr[5]   = { 6, 6, 6, 6, 9 };     // 9 = я┐╜рокя┐╜: "я┐╜я┐╜!"
       setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
       break; }
     case SC_TIKTOK: {
@@ -1137,7 +1155,7 @@ static void sceneTargets() {
   }
 }
 
-// прогресс текущего шага (мс от его начала); sceneStepAt - метка конца шага
+// я┐╜рогя┐╜я┐╜я┐╜ текя┐╜щегя┐╜ шагя┐╜ (я┐╜я┐╜ я┐╜я┐╜ я┐╜я┐╜я┐╜ я┐╜я┐╜чаля┐╜); sceneStepAt - я┐╜я┐╜тка я┐╜я┐╜я┐╜я┐╜ шагя┐╜
 static int stepElapsed(unsigned long now) {
   int rem = (int)(sceneStepAt - now);
   if (rem < 0) rem = 0;
@@ -1147,7 +1165,7 @@ static int stepElapsed(unsigned long now) {
 }
 
 static void sceneDrawPeek(int lid) {
-  // подглядывание: глаза щурятся снизу, открываются, шарят, закрываются
+  // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ывая┐╜я┐╜я┐╜: я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ сния┐╜я┐╜, я┐╜я┐╜я┐╜ывая┐╜я┐╜я┐╜я┐╜, я┐╜я┐╜я┐╜я┐╜, я┐╜я┐╜я┐╜я┐╜ывая┐╜я┐╜я┐╜я┐╜
   static const int8_t ge[4][4] = { { 33, 24, 0, 0 }, { 12, 38, 1, 0 }, { 12, 38, 1, 0 }, { 33, 24, 0, 0 } };
   brows = (uint8_t)ge[sceneStep][2];
   drawEye(EYE1_X, ge[sceneStep][0], ge[sceneStep][1], eyeL, lid, ge[sceneStep][3]);
@@ -1160,16 +1178,16 @@ static void sceneDrawBook(int lid, unsigned long now) {
   drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
   int dy;
   if (sceneStep == 0) {
-    dy = 22;                                            // книга ещё не подъехала
+    dy = 22;                                            // я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜ я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜халя┐╜
   } else if (sceneStep == 1) {
     float u = (float)stepElapsed(now) / 420.0f;
     if (u > 1.0f) u = 1.0f;
-    u = u * u * (3.0f - 2.0f * u);                      // мягкий выезд (smoothstep)
+    u = u * u * (3.0f - 2.0f * u);                      // я┐╜ягкя┐╜я┐╜ я┐╜ыезя┐╜ (smoothstep)
     dy = (int)(22.0f * (1.0f - u));
   } else if (sceneStep >= 4) {
     float u = (float)stepElapsed(now) / 750.0f;
     if (u > 1.0f) u = 1.0f;
-    dy = (int)(24.0f * u * u);                          // падает: разгон как гравитация
+    dy = (int)(24.0f * u * u);                          // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜: разя┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜ я┐╜равя┐╜я┐╜я┐╜я┐╜
   } else {
     dy = 0;
   }
@@ -1180,7 +1198,7 @@ static void sceneDrawTiktok(int lid, unsigned long now) {
   brows = 0;
   drawPhoneV3(16);
   if (sceneStep == 2 || sceneStep == 3) {
-    // сердечко летит через два шага кверху, глаза - дужки
+    // я┐╜рдечко я┐╜я┐╜я┐╜я┐╜ я┐╜рез я┐╜я┐╜я┐╜ шагя┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜, я┐╜я┐╜я┐╜я┐╜я┐╜ - я┐╜ужкя┐╜
     unsigned long el = (unsigned long)stepElapsed(now);
     unsigned long e1 = (sceneStep == 2) ? el : el + 400UL;
     if (e1 > 800UL) e1 = 800UL;
@@ -1216,7 +1234,7 @@ static void sceneDrawPc(int lid, unsigned long now) {
       drawCursorV3(54 + (int)(10.0f * u), 40);
       break; }
     default:
-      brows = 2;                                        // паника на тряске
+      brows = 2;                                        // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜ я┐╜я┐╜я┐╜ске
       drawKbdV3(now, -1, true);
       drawMouseV3(100, 51, false);
       break;
@@ -1226,7 +1244,7 @@ static void sceneDrawPc(int lid, unsigned long now) {
 }
 
 static void sceneDrawSelf(int lid, unsigned long now) {
-  static const uint8_t PH[5] = { 1, 2, 3, 4, 0 };       // точки, точки, "!", конец
+  static const uint8_t PH[5] = { 1, 2, 3, 4, 0 };       // я┐╜чки, я┐╜чки, "!", я┐╜я┐╜я┐╜я┐╜я┐╜
   brows = (sceneStep < 3) ? 1 : 0;
   if (sceneStep >= 3) {
     drawHappyArcs(now);
@@ -1241,20 +1259,20 @@ static void sceneDrawSelf(int lid, unsigned long now) {
 
 static void sceneDrawCoffee(int lid) {
   brows = 0;
-  int lower = (sceneStep == 1 || sceneStep == 2) ? 11 : 8;   // прищур-кайф
+  int lower = (sceneStep == 1 || sceneStep == 2) ? 11 : 8;   // я┐╜я┐╜я┐╜я┐╜я┐╜-я┐╜я┐╜я┐╜я┐╜
   drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, lower);
   drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, lower);
   drawMug((sceneStep >= 1 && sceneStep <= 2) ? -2 : 0);
 }
 
-// ---- v3.2 пропы ----
+// ---- v3.2 я┐╜ропя┐╜ ----
 
 static void drawBell(int step, unsigned long now) {
   if (step > 1) return;
-  int dx = ((now / 90UL) & 1) ? 1 : -1;        // звенит: качается влево-вправо
-  display.fillRect(55 + dx, 22, 19, 3, SSD1306_BLACK);          // оголовье
+  int dx = ((now / 90UL) & 1) ? 1 : -1;        // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜: я┐╜я┐╜чаея┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜-я┐╜я┐╜равя┐╜
+  display.fillRect(55 + dx, 22, 19, 3, SSD1306_BLACK);          // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜
   display.fillTriangle(56 + dx, 25, 72 + dx, 25, 64 + dx, 36, SSD1306_BLACK);
-  display.fillCircle(64 + dx, 38, 2, SSD1306_BLACK);            // язычок
+  display.fillCircle(64 + dx, 38, 2, SSD1306_BLACK);            // я┐╜я┐╜чок
 }
 
 static void drawOps(int step, unsigned long now) {
@@ -1269,13 +1287,13 @@ static void drawOps(int step, unsigned long now) {
 }
 
 static void drawPizza(int step) {
-  int half = 11 - step * 3;                     // укус: 11, 8, 5
+  int half = 11 - step * 3;                     // я┐╜я┐╜я┐╜: 11, 8, 5
   if (step <= 2) {
     display.fillTriangle(64 - half, 52, 64 + half, 52, 64, 63, SSD1306_BLACK);
-    drawLN(64 - half, 53, 64 + half, 53, 2);                    // корочка
-    display.fillCircle(64 - half / 2, 58 + step, 2, SSD1306_WHITE);   // олива
+    drawLN(64 - half, 53, 64 + half, 53, 2);                    // я┐╜я┐╜я┐╜чка
+    display.fillCircle(64 - half / 2, 58 + step, 2, SSD1306_WHITE);   // я┐╜я┐╜я┐╜я┐╜я┐╜
   } else if (step == 3) {
-    display.fillCircle(58, 60, 2, SSD1306_BLACK);               // крошки
+    display.fillCircle(58, 60, 2, SSD1306_BLACK);               // я┐╜я┐╜шки
     display.fillCircle(70, 59, 2, SSD1306_BLACK);
     display.fillCircle(64, 62, 1, SSD1306_BLACK);
   }
@@ -1283,11 +1301,11 @@ static void drawPizza(int step) {
 
 static void drawRainProp(int step, unsigned long now) {
   if (step < 1 || step > 3) return;
-  drawCloud(1);                                  // мини-облачко из сонной серии
+  drawCloud(1);                                  // я┐╜я┐╜я┐╜я┐╜-я┐╜я┐╜я┐╜я┐╜чко я┐╜я┐╜ соня┐╜я┐╜я┐╜ я┐╜рии
   for (int i = 0; i < 3; i++) {
     int x = 55 + i * 8;
     int y = (now * 2 + i * 37) % 37 + 25;
-    drawLN(x, y, x, y + 3, 2);                   // капля
+    drawLN(x, y, x, y + 3, 2);                   // я┐╜я┐╜я┐╜я┐╜я┐╜
   }
 }
 
@@ -1298,13 +1316,13 @@ static void drawBallProp(int step, unsigned long now) {
   int amp = (step == 1 || step == 3) ? 26 : 12;
   int y = 58 - up * amp / 16;
   display.fillCircle(64, y, 5, SSD1306_BLACK);
-  display.fillCircle(62, y - 2, 1, SSD1306_WHITE);   // блик
+  display.fillCircle(62, y - 2, 1, SSD1306_WHITE);   // я┐╜я┐╜я┐╜я┐╜
   if (step == 3 && up >= 14) spark(78, 40);
 }
 
 static void drawBirdProp(int step, unsigned long now) {
   if (step >= 3) { spark(70, 8); return; }
-  int wing = ((now / 120UL) & 1) ? 3 : -1;      // взмахи
+  int wing = ((now / 120UL) & 1) ? 3 : -1;      // я┐╜я┐╜я┐╜я┐╜я┐╜
   int x = (step == 0) ? 53 : (step == 1) ? 63 : 73;
   int y = 8;
   display.fillTriangle(x - 4, y + 1, x + 4, y + 1, x, y + 4, SSD1306_BLACK);
@@ -1312,27 +1330,27 @@ static void drawBirdProp(int step, unsigned long now) {
   display.drawLine(x + 3, y + wing, x, y + 1, SSD1306_BLACK);
 }
 
-// ---- v3.2 отрисовщики сцен ----
+// ---- v3.2 я┐╜я┐╜я┐╜совщикя┐╜ я┐╜цен ----
 
 static void sceneDrawAlarm(int lid, unsigned long now) {
   switch (sceneStep) {
     case 0:
       brows = 0;
-      drawClosedEyes();                          // ещё спит
+      drawClosedEyes();                          // я┐╜я┐╜я┐╜ спия┐╜
       break;
     case 1:
-      brows = 1;                                 // ВСТАЛ! широко
+      brows = 1;                                 // я┐╜я┐╜я┐╜я┐╜я┐╜! я┐╜рокя┐╜
       drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
       drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
       break;
     case 2:
     case 3:
-      brows = 2;                                 // мечется и ворчит
+      brows = 2;                                 // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜
       drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
       drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
       break;
     default:
-      brows = 0;                                 // сдался, прищур
+      brows = 0;                                 // сдая┐╜я┐╜я┐╜, я┐╜я┐╜я┐╜я┐╜я┐╜
       drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 8);
       drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 8);
       break;
@@ -1345,7 +1363,7 @@ static void sceneDrawThink(int lid, unsigned long now) {
   drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
   drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
   drawOps(sceneStep, now);
-  if (sceneStep == 4) { spark(52, 22); spark(76, 22); }         // ЭВРИКА!
+  if (sceneStep == 4) { spark(52, 22); spark(76, 22); }         // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜!
 }
 
 static void sceneDrawSnack(int lid) {
@@ -1401,7 +1419,7 @@ static void sceneFrame(unsigned long now, int lid) {
   display.display();
 }
 
-// ---------- машина сна ----------
+// ---------- я┐╜я┐╜шиня┐╜ сна ----------
 
 static void sleepReset() {
   sleepPh = 0;
@@ -1461,7 +1479,7 @@ static void eyesTick() {
   }
   int lid = 0;
   if (blinkActive) {
-    float ph = (now - blinkStart) / (float)(240UL * (blinkSlow ? blinkSlow : 1));   // v3: зевок = медленный blink
+    float ph = (now - blinkStart) / (float)(240UL * (blinkSlow ? blinkSlow : 1));   // v3: я┐╜я┐╜я┐╜я┐╜я┐╜ = я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ blink
     if (ph >= 1.0f) {
       if (doubleBlink && !blinkSecond) { blinkSecond = true; blinkStart = now; ph = 0; }
       else { blinkActive = false; lid = 0; nextBlinkAt = now + 2000UL + random(0, 4000UL); }
@@ -1498,7 +1516,7 @@ static void eyesTick() {
       setBothTargets(dx, dy, 4.2f);
       nextLookAt = now + 140UL + random(0, 160UL);
     }
-  } else if (sleep_ && now >= wakeUntil) {   // v3: E|wake держит глаза открытыми
+  } else if (sleep_ && now >= wakeUntil) {   // v3: E|wake я┐╜я┐╜ржия┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ыми
     // ╨Э╨Ю╨з╨м: ╤Б╨╛╨╜╨╜╤Л╨╣ ╤А╨╡╨╢╨╕╨╝ - ╨▓╨╖╨│╨╗╤П╨┤ ╨┤╤А╨╡╨╣╤Д╤Г╨╡╤В ╨▓╨╜╨╕╨╖, ╤А╨╡╨┤╨║╨╕╨╡ ╨╝╨╛╤А╨│╨░╨╜╨╕╤П
     actMode = -1;
     brows = 0;
@@ -1531,7 +1549,7 @@ static void eyesTick() {
 #endif
     {
     lowerLid = 0;
-    if (now < exhaleUntil) lowerLid = 6;   // v3: выдох после тревоги/потягивание после сна
+    if (now < exhaleUntil) lowerLid = 6;   // v3: я┐╜ыдоя┐╜ я┐╜я┐╜сле я┐╜ревя┐╜я┐╜я┐╜/я┐╜я┐╜я┐╜ягия┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜сле сна
     if (actMode >= 0) {
       // ╨╕╨┤╤С╤В ╨╛╤Б╨╛╨▒╨╛╨╡ ╨┤╨╡╨╣╤Б╤В╨▓╨╕╨╡
       if (now >= actUntil) {
@@ -1547,10 +1565,10 @@ static void eyesTick() {
             if (actStep < 4) { setBothTargets(wp[actStep][0], wp[actStep][1], PUPIL_R_BASE); actUntil = now + 450UL; }
             else actMode = -1;
             break; }
-          case 4: // зевок: зрачки в центр, медленный blink с бровями, потом сонный выдох
+          case 4: // я┐╜я┐╜я┐╜я┐╜я┐╜: я┐╜я┐╜чки я┐╜ ценя┐╜я┐╜, я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜ blink я┐╜ я┐╜ровями, я┐╜я┐╜том соня┐╜я┐╜ я┐╜ыдоя┐╜
             if (actStep <= 1) {
               setBothTargets(0.0f, 0.0f, PUPIL_R_BASE);
-              blinkSlow = 8;                                  // 240мс * 8 = ~1.9с
+              blinkSlow = 8;                                  // 240я┐╜я┐╜ * 8 = ~1.9я┐╜
               blinkActive = true; blinkStart = now;
               doubleBlink = false; blinkSecond = false;
               brows = 1;
@@ -1558,11 +1576,11 @@ static void eyesTick() {
             } else {
               blinkSlow = 0;
               actMode = -1;
-              exhaleUntil = now + 1300UL;                     // сонный выдох
+              exhaleUntil = now + 1300UL;                     // соня┐╜я┐╜ я┐╜ыдоя┐╜
               nextLookAt = now + 1200UL;
             }
             break;
-          case 5: // икота: три резких подскока зрачков
+          case 5: // я┐╜я┐╜я┐╜я┐╜: я┐╜я┐╜ резя┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜скоя┐╜я┐╜ я┐╜я┐╜чкоя┐╜
             if (actStep <= 3) {
               float jx = (random(0, 41) - 20) / 10.0f;
               setBothTargets(jx, -3.5f, PUPIL_R_BASE + 0.3f);
@@ -1573,7 +1591,7 @@ static void eyesTick() {
               nextLookAt = now + 900UL;
             }
             break;
-          case 6: // double take: влево, крепко влево - и распахнутые глаза
+          case 6: // double take: я┐╜я┐╜я┐╜я┐╜я┐╜, я┐╜репя┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ - я┐╜ я┐╜спая┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜
             if (actStep == 1) {
               setBothTargets(-4.0f, 1.0f, 6.0f);
               actUntil = now + 450UL;
@@ -1589,7 +1607,7 @@ static void eyesTick() {
               nextLookAt = now + 900UL;
             }
             break;
-          case 7: // подслушать: глаз съехал вбок-вверх и замер
+          case 7: // я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜: я┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜хал я┐╜я┐╜я┐╜я┐╜-я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜
             if (actStep == 1) {
               setBothTargets(5.5f, -3.5f, 6.0f);
               actUntil = now + 800UL;
@@ -1601,7 +1619,7 @@ static void eyesTick() {
               nextLookAt = now + 900UL;
             }
             break;
-          case 8: // что это сверху?: взгляд в потолок, два контрольных пика
+          case 8: // я┐╜я┐╜ я┐╜я┐╜ свея┐╜я┐╜я┐╜?: я┐╜я┐╜я┐╜я┐╜я┐╜ я┐╜ я┐╜я┐╜толя┐╜я┐╜, я┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜роля┐╜я┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜
             if (actStep == 1) {
               setBothTargets(0.0f, -6.5f, 6.0f);
               actUntil = now + 600UL;
@@ -1631,7 +1649,7 @@ static void eyesTick() {
       }
       // ╨▓╤А╨╡╨╝╤П ╨╛╤Б╨╛╨▒╨╛╨│╨╛ ╨┤╨╡╨╣╤Б╤В╨▓╨╕╤П
       if (now >= nextActAt) {
-        {                                     // v3.2: кубик: 8 привычек + зевок
+        {                                     // v3.2: я┐╜убия┐╜: 8 я┐╜ривя┐╜чек + я┐╜я┐╜я┐╜я┐╜я┐╜
           int roll = random(0, 9);
           actMode = (roll == 4) ? 4 : (roll <= 3 ? roll : 5 + (roll - 5) % 4);
         }
@@ -1664,14 +1682,14 @@ static void eyesTick() {
   }
 
   // ---- ╨┐╨╗╨░╨▓╨╜╨╛╨╡ ╨┤╨▓╨╕╨╢╨╡╨╜╨╕╨╡ ----
-  // v3: пружина вместо lerp, плюс саккады и дыхание; переходы тревога/сон -> выдох
+  // v3: я┐╜я┐╜ужия┐╜я┐╜ я┐╜я┐╜я┐╜я┐╜я┐╜ lerp, я┐╜я┐╜я┐╜я┐╜ сакя┐╜я┐╜я┐╜я┐╜ я┐╜ я┐╜я┐╜ханя┐╜я┐╜; я┐╜я┐╜я┐╜ходя┐╜ я┐╜ревя┐╜я┐╜я┐╜/сон -> я┐╜ыдоя┐╜
   {
     static unsigned long v3PrevAt = 0;
     float dtF = (v3PrevAt && now > v3PrevAt) ? (float)(now - v3PrevAt) / 1000.0f : 0.016f;
     if (dtF > 0.05f) dtF = 0.05f;
     if (dtF < 0.004f) dtF = 0.004f;
     v3PrevAt = now;
-    v3Phase(dtF, (down || panic) ? 0.3f : 1.0f);   // v3: желе-физика (dt реальный)
+    v3Phase(dtF, (down || panic) ? 0.3f : 1.0f);   // v3: я┐╜я┐╜я┐╜я┐╜-физя┐╜я┐╜я┐╜ (dt реая┐╜я┐╜я┐╜)
   }
 
   if (panicPrev && !panic)  exhaleUntil = now + 1600UL;
@@ -1820,7 +1838,7 @@ void showState() {
 void setStatus(State s) {
   if (s == state) return;
   state = s;
-  if (state == ST_OK) gHappyUntil = millis() + 2200UL;   // v3: дужки-радость после беды
+  if (state == ST_OK) gHappyUntil = millis() + 2200UL;   // v3: я┐╜ужкя┐╜-радя┐╜я┐╜я┐╜я┐╜ я┐╜я┐╜сле я┐╜я┐╜я┐╜я┐╜
   if (state == ST_DOWN) {
     alertReset(); // ╨▓╨║╨╗╤О╤З╨░╨╡╨╝ "╨┐╤А╨╛╤В╨╕╨▓╨╜╤Л╨╣" ╤А╨╡╨╢╨╕╨╝ ╨╝╨╕╨│╨░╨╜╨╕╤П
   } else {
@@ -2023,17 +2041,36 @@ void monitorLoop() {
     for (int i = 0; i < g_srv.nVms; i++) if (!g_srv.vms[i].up) vmsDownCount++;
   }
   bool vmAlarm = !hypAlarm && g_srv.valid && vmsDownCount > 0;
+  static bool diskHardPrev = false, diskFullPrev = false;
+  bool diskHard = g_srv.valid && (g_srv.nDiskBad > 0 || g_srv.hFail > 0);  // v3.3: ╨╛╤В╨▓╨░╨╗/SMART
+  bool diskFull = false;                                                  // v3.3: ╤Б╤В╨╛╤А╨░╨┤╨╢ >= 90%
+  if (g_srv.valid)
+    for (int i = 0; i < g_srv.nDisks; i++)
+      if (g_srv.dMax[i] > 0.0f && g_srv.dUsed[i] > 0.0f && g_srv.dUsed[i] / g_srv.dMax[i] >= 0.9f)
+        diskFull = true;
   if (hypAlarm) {
     beepStart(BM_SIREN, PATTERN_SIREN, sizeof(PATTERN_SIREN) / sizeof(BeepStep), true);
   } else if (vmAlarm && !nightMode) {
     beepStart(BM_VM, PATTERN_VM, sizeof(PATTERN_VM) / sizeof(BeepStep), true);
+  } else if (diskHard && !nightMode) {
+    beepStart(BM_DISK, PATTERN_DISK, sizeof(PATTERN_DISK) / sizeof(BeepStep), true);
+  } else if (diskFull && !diskFullPrev && !nightMode && !beepPat) {
+    beepStart(BM_DISK, PATTERN_DISK, sizeof(PATTERN_DISK) / sizeof(BeepStep), false);  // ╨┐╨╡╤А╨╡╨┐╨╛╨╗╨╜╨╡╨╜╨╕╨╡: ╤А╨░╨╖╨╛╨▓╨╛
   } else if (beepPat && (beepPat == PATTERN_SIREN || beepPat == PATTERN_VM)) {
     // ╤В╤А╨╡╨▓╨╛╨│╨░ ╨║╨╛╨╜╤З╨╕╨╗╨░╤Б╤М - ╤Б╤В╨╛╨┐ + ╤А╨░╨┤╨╛╤Б╤В╨╜╤Л╨╣ "╨▓╤Б╤С ╤Е╨╛╤А╨╛╤И╨╛" (╨╜╨╡ ╨╜╨╛╤З╤М╤О)
     beepStopNow(false);
     if (!nightMode) beepStart(BM_RECOVER, PATTERN_RECOVER, sizeof(PATTERN_RECOVER) / sizeof(BeepStep), false);
     Serial.print(F("[BEEP] stop: "));
     Serial.println(F("recovered"));
+  } else if (beepPat == PATTERN_DISK && (!diskHard || nightMode)) {
+    beepStopNow(false);                     // ╨┤╨╕╤Б╨║╨╕ ╤Б╨╜╨╛╨▓╨░ ╨╛╨║ (╨╕╨╗╨╕ ╨╜╨╛╤З╤М) - ╤Б╤В╨╛╨┐
+    if (!nightMode) beepStart(BM_RECOVER, PATTERN_RECOVER, sizeof(PATTERN_RECOVER) / sizeof(BeepStep), false);
+    Serial.println(F("[BEEP] stop: disks ok"));
   }
+  if (diskHardPrev && !diskHard && state == ST_OK)
+    gHappyUntil = millis() + 2200UL;        // v3.3: ╨┤╨╕╤Б╨║╨╕ ╨┐╨╛╤З╨╕╨╜╨╕╨╗╨╕╤Б╤М - ╨┤╤Г╨╢╨║╨╕-╤А╨░╨┤╨╛╤Б╤В╤М
+  diskHardPrev = diskHard;
+  diskFullPrev = diskFull;
   beepTick();
 
   // ╤Н╨║╤А╨░╨╜: ╨│╨╗╨░╨╖╨░ <-> ╤Б╨╗╨░╨╣╨┤-╤И╨╛╤Г (╨║╨░╨╢╨┤╤Л╨╡ 2-3 ╨╝╨╕╨╜╤Г╤В╤Л)

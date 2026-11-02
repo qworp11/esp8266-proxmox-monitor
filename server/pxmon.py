@@ -3,7 +3,9 @@
 Отдаёт по HTTP на порту 8123 компактные строки:
   S|node|upsec|cpu%|ramMiB|ramMaxMiB|localUnix|backupFlag
   V|vmid|name|r/s|memMiB|memMaxMiB
-  D|storage|usedGiB|maxGiB   (топ-4 по размеру, по убыванию)
+  D|storage|usedGiB|maxGiB|a/x   (топ-4 по размеру, по убыванию; 'x' = сторадж отвалился)
+  H|smartFailedCount             (число физ. дисков с SMART health=FAILED;
+                                  строка отсутствует, если список дисков недоступен)
 localUnix - время ХОСТА (локальный таймзон) для ночного режима на плате,
 backupFlag - 1 если прямо сейчас идёт vzdump, иначе 0.
 /pretty - HTML-дашборд для телефона/браузера (глаза + те же данные).
@@ -31,9 +33,31 @@ def backup_running(tasks):
             pass
     return 0
 
-TEST_FORCE_BACKUP = 0  # честные данные от /cluster/tasks
-TEST_FORCE_VMDOWN = 0  # честные данные статуса VM
-TEST_FORCE_DAY = 0     # честное локальное время сервера
+TEST_FORCE_BACKUP = 0   # честные данные от /cluster/tasks
+TEST_FORCE_VMDOWN = 0   # честные данные статуса VM
+TEST_FORCE_DAY = 0      # честное локальное время сервера
+TEST_FORCE_DISKOFF = 0  # "usb1"/"ssd480"... - притворяться, что сторадж отвалился
+TEST_FORCE_HFAIL = 0    # притворяться, что N дисков выдали SMART FAILED
+
+DISK_LIST_TTL = 300          # sec: SMART list changes slowly, also cache = fast /discs fetch
+_diskcache = {"t": 0.0, "hfail": 0}
+
+
+def disk_smart_fail_count(node_name):
+    # physical disks: SMART health FAILED - signal of a dying disk; pvesh is slow (~2-4 s), so we cache
+    if _time.time() - _diskcache["t"] < DISK_LIST_TTL:
+        return _diskcache["hfail"]
+    h = 0
+    try:
+        r3 = subprocess.run(
+            ["pvesh", "get", "/nodes/%s/disks/list" % node_name, "--output-format", "json"],
+            capture_output=True, text=True, timeout=20)
+        h = sum(1 for d in json.loads(r3.stdout) if d.get("health") == "FAILED")
+    except Exception:
+        pass  # list unavailable - keep previous, do not scare the platform
+    _diskcache.update(t=_time.time(), hfail=h)
+    return h
+
 
 def fetch():
     res = subprocess.run(
@@ -49,8 +73,8 @@ def fetch():
             node = it
         elif t in ("qemu", "lxc") and not it.get("template", 0):
             vms.append(it)
-        elif t == "storage" and it.get("status") == "available":
-            stor.append(it)
+        elif t == "storage":
+            stor.append(it)   # все, включая недоступные (упавший не должен исчезать)
     out = []
     tm = _time.localtime()
     sd = tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec  # локальные секунды с полуночи
@@ -84,7 +108,12 @@ def fetch():
     stor.sort(key=lambda s: -(s.get("maxdisk") or 0))
     for s in stor[:4]:
         nm = (s.get("storage") or "?")[:8].replace("|", "_")
-        out.append("D|%s|%.1f|%.1f" % (nm, gib(s.get("disk") or 0), gib(s.get("maxdisk") or 0)))
+        st = "a" if s.get("status") == "available" else "x"
+        if TEST_FORCE_DISKOFF and nm == TEST_FORCE_DISKOFF:
+            st = "x"  # ТЕСТ: притворяемся отвалившимся
+        out.append("D|%s|%.1f|%.1f|%s" % (nm, gib(s.get("disk") or 0), gib(s.get("maxdisk") or 0), st))
+    hfail = disk_smart_fail_count(node.get("node") if node else "") + int(TEST_FORCE_HFAIL)
+    out.append("H|%d" % hfail)
     return "\n".join(out) + "\n"
 
 # ----------------------------------------------------------------------------
@@ -190,16 +219,16 @@ PRETTY_HTML = r"""<!DOCTYPE html>
 var $ = function(id){ return document.getElementById(id); };
 /* ---------- данные ---------- */
 var data = { link:false, node:"", upsec:0, cpu:0, ram:0, ramMax:0, sd:0, backup:false,
-             vms:[], disks:[], lastOk:0, lastTry:0 };
+             vms:[], disks:[], smartFail:0, lastOk:0, lastTry:0 };
 var demo = null;                    // window.__demo("down|vm|backup|night|ok") - тест лица
-/* вибро-алерт (как пищалка на плате): сирена при ГП, 3 писка при VM, ночью молчит */
+/* вибро-алерт (как пищалка на плате): сирена при ГП, 3 писка при VM и при дисках, ночью молчит */
 var vibLast = 0;
 function vibrTick(){
   try{
     if (!navigator.vibrate) return;
     var m = demo || mood(), n = Date.now();
     if (m === "down"){ if (n - vibLast >= 1150){ navigator.vibrate([700, 450]); vibLast = n; } }
-    else if (m === "vm"){ if (n - vibLast >= 1040){ navigator.vibrate([120, 110, 120, 110, 120, 500]); vibLast = n; } }
+    else if (m === "vm" || m === "disk"){ if (n - vibLast >= 1040){ navigator.vibrate([120, 110, 120, 110, 120, 500]); vibLast = n; } }
     else { if (vibLast){ navigator.vibrate(0); vibLast = 0; } }
   } catch(e){}
 }
@@ -207,7 +236,7 @@ function update(){
   data.lastTry = Date.now();
   fetch("/", {cache:"no-store"}).then(function(r){ return r.text(); }).then(function(t){
     var d = { link:false, node:"", upsec:0, cpu:0, ram:0, ramMax:0, sd:0, backup:false,
-              vms:[], disks:[] };
+              vms:[], disks:[], smartFail:0 };
     t.split(/\n/).forEach(function(l){
       var p = l.split("|");
       if (p[0] === "S"){
@@ -216,7 +245,9 @@ function update(){
       } else if (p[0] === "V"){
         d.vms.push({ id:+p[1], name:p[2], up:p[3] === "r", mem:+p[4], max:+p[5] });
       } else if (p[0] === "D"){
-        d.disks.push({ name:p[1], used:+p[2], max:+p[3] });
+        d.disks.push({ name:p[1], used:+p[2], max:+p[3], ok:p[4] !== "x" });
+      } else if (p[0] === "H"){
+        d.smartFail = +p[1]|0;
       }
     });
     var lt = data.lastTry;
@@ -234,6 +265,8 @@ function mood(){
   if (!data.link) return "down";
   var vmBad = data.vms.some(function(v){ return !v.up; });
   if (vmBad) return "vm";
+  var diskBad = data.smartFail > 0 || data.disks.some(function(s){ return s.ok === false; });
+  if (diskBad) return "disk";
   if (data.backup) return "backup";
   if (sleepFace()) return "night";
   return "ok";
@@ -250,6 +283,7 @@ function renderCards(){
     st.textContent = data.backup ? "БЭКАП!" :
       ((data.vms.length - vmbad.length) + "/" + data.vms.length + " VM OK" + extra);
     if (m === "vm") st.textContent = "VM ✗ " + vmbad.map(function(v){ return v.id; }).join(",");
+    if (m === "disk") st.textContent = "ДИСК ✗";
   }
   $("who").innerHTML = "node " + (data.node || "?") +
     " / обновлено " + ago(data.lastOk) + "<br>" + (data.link ? "" : "Wi-Fi или сервер?");
@@ -266,10 +300,15 @@ function renderCards(){
     }).join("");
     $("disks").innerHTML = data.disks.map(function(s){
       var pct = Math.round(s.used / Math.max(1, s.max) * 100);
-      return '<div class="rowline"><span>' + s.name + '</span><span class="dim">' +
-        s.used + " / " + s.max + " GiB</span></div>" +
-        '<div class="bar' + (pct > 90 ? " hot" : "") + '"><i style="width:' + pct + '%"></i></div>';
+      return '<div class="rowline"><span>' + (s.ok === false ? "✕ " : "") + s.name +
+        '</span><span class="dim">' + s.used + " / " + s.max + " GiB</span></div>" +
+        '<div class="bar' + ((pct > 90 || s.ok === false) ? " hot" : "") + '"><i style="width:' +
+        (s.ok === false ? 100 : Math.min(100, pct)) + '%"></i></div>';
     }).join("");
+    if (data.smartFail > 0){
+      $("disks").innerHTML += '<div class="rowline" style="color:var(--bad);font-weight:bold">' +
+        "<span>⚠ SMART FAILED</span><span>×" + data.smartFail + "</span></div>";
+    }
   }
   document.body.classList.toggle("night", m === "night");
 }
@@ -358,7 +397,7 @@ function eyesTick(now){
   if (now - last < 33) return;
   last = now;
   var t = now - T0;
-  var m = mood(), bad = (m === "down" || m === "vm");
+  var m = mood(), bad = (m === "down" || m === "vm" || m === "disk");
   var ey = bad ? BADY : OKY, eh = bad ? BADH : OKH;
 
   if (!blinkOn && now >= nBlink){ blinkOn = true; bStart = now;
