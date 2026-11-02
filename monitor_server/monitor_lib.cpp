@@ -42,14 +42,16 @@ int           lastRtt     = -1;   // ms, -1 = нет ответа
 
 // ---------- ПИЩАЛКА (D5 = GPIO14, пассивный зуммер от ПК: GND + D5) ----------
 const uint8_t PIN_BUZZER = D5;  // D5 полностью свободный пин (без boot-strap нюансов)
+const uint8_t PIN_BTN      = D3;  // встроенная кнопка FLASH (GPIO0) — листалка слайдов</arg_key>
 struct BeepStep { uint16_t freq; uint16_t ms; }; // freq=0 пауза; {0,0} конец (не цикл)
 static const BeepStep PATTERN_SIREN[]   = { {2200, 700}, {1500, 450} };                          // гипервизор: вой
 static const BeepStep PATTERN_VM[]      = { {1100,120},{0,110},{1100,120},{0,110},{1100,120},{0,120},{1600,160},{0,9000} }; // VM упала: 3 писка
 static const BeepStep PATTERN_DISK[]   = { {700,150},{0,110},{700,150},{0,2900} };                  // диски: низкий двойной гудок
 static const BeepStep PATTERN_RECOVER[] = { {1400,90},{0,50},{1900,140},{0,0} };                  // всё хорошо
 static const BeepStep PATTERN_BOOT[]    = { {2000,70},{0,40},{1600,90},{0,0} };                   // "я жив"
+const BeepStep PATTERN_UI[]      = { {1800,35},{0,0} };                                     // клик кнопки листалки
 
-enum BeepMode { BM_NONE, BM_SIREN, BM_VM, BM_DISK, BM_RECOVER, BM_BOOT };
+enum BeepMode { BM_NONE, BM_SIREN, BM_VM, BM_DISK, BM_RECOVER, BM_BOOT, BM_UI };
 static BeepMode        beepMode = BM_NONE;
 static const BeepStep* beepPat  = nullptr;
 static uint8_t         beepLen = 0, beepIdx = 0;
@@ -1027,6 +1029,16 @@ static void sceneSetToken(const char* tok) {
     return;
   }
   if (!strcmp(tok, "none")) { forceHat = false; sceneClear(); Serial.println(F("[SCENE] cleared")); return; }
+if (!strcmp(tok, "card") || !strcmp(tok, "next")) {
+  unsigned long _now = millis();
+  if (state != ST_OK) { Serial.println(F("[BTN] suppressed: alarm")); return; }
+  if (dispMode == DM_EYES) { dispMode = DM_SLIDES; slideIdx = 0; slideCount = g_srv.valid ? 4 : 2; }
+  else { slideIdx++; if (slideIdx >= slideCount) slideIdx = 0; }
+  drawSlide(slideIdx); slideUntil = _now + SLIDE_MS;
+  if (!beepPat) beepStart(BM_UI, PATTERN_UI, sizeof(PATTERN_UI) / sizeof(BeepStep), false);
+  Serial.println(F("[BTN] card"));
+  return;
+}
   if (!strcmp(tok, "hat"))  { forceScene = -1; forceHat = true; sceneName = SC_NONE;
                               dispMode = DM_EYES; lastFrame = 0;
                               if (nextInfoAt < millis() + 60000UL) nextInfoAt = millis() + 60000UL;
@@ -2367,6 +2379,9 @@ void monitorSetup() {
   pinMode(PIN_BUZZER, OUTPUT);
   digitalWrite(PIN_BUZZER, LOW);
 
+  // встроенная кнопка FLASH (GPIO0, D3): листалка слайдов инфо
+  pinMode(PIN_BTN, INPUT_PULLUP);
+
   Wire.begin(PIN_SDA, PIN_SCL); // SDA=D2(GPIO4), SCL=D1(GPIO5)
   Wire.setClock(400000);        // 400 кГц - быстрые кадры
 
@@ -2447,12 +2462,39 @@ void monitorSetup() {
   beepStart(BM_BOOT, PATTERN_BOOT, sizeof(PATTERN_BOOT) / sizeof(BeepStep), false);
 }
 
+static void buttonTick(unsigned long now) {
+  static unsigned long btnDownMs = 0;
+  static bool btnStable = true;
+  static bool btnRawLast = true;
+  bool raw = (digitalRead(PIN_BTN) == HIGH);  // HIGH = не нажато (подтяжка)
+  if (raw != btnRawLast) { btnRawLast = raw; btnDownMs = now; }
+  if ((now - btnDownMs) < 60UL || raw == btnStable) return;
+  btnStable = raw;
+  if (raw == false) {                               // фронт LOW -> нажатие
+    Serial.println(F("[BTN] FLASH press"));
+    if (state != ST_OK) return;                     // тревога важнее: не уводим с экрана алерта
+    if (dispMode == DM_EYES) {
+      dispMode = DM_SLIDES;
+      slideIdx = 0;
+      slideCount = g_srv.valid ? 4 : 2;
+    } else {
+      slideIdx++;
+      if (slideIdx >= slideCount) slideIdx = 0;
+    }
+    drawSlide(slideIdx);
+    slideUntil = now + SLIDE_MS;
+    if (!beepPat) beepStart(BM_UI, PATTERN_UI, sizeof(PATTERN_UI) / sizeof(BeepStep), false);
+  }
+}
+
 void monitorLoop() {
   unsigned long now = millis();
 
 #if SCENES_ON
   serialCmdTick();   // демо/серверные команды "E|<token>" по USB (без ресета: DtrEnable=false)
 #endif
+
+  buttonTick(now);    // кнопка FLASH (D3/GPIO0) — листаем слайды инфо
 
   // ---- ЭКРАН: инверсия (ночью - тёмный экран; при аварии - мигание) ----
   bool wantInvert;

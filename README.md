@@ -160,6 +160,8 @@
 ```
 E|peek   E|book   E|tiktok   E|pc   E|self   E|coffee   E|alarm   E|think
 E|snack   E|rain   E|ball   E|bird   E|hat   E|wake   E|yawn   E|none
+E|card   E|next                              # перевернуть карточку слайд-шоу (как кнопка FLASH / D3)
+
 E|vacuum   E|cook   E|chat   E|walk   E|scared   E|movie
 E|knit   E|garden   E|game   E|music   E|parcel   E|busy
 ```
@@ -252,7 +254,10 @@ H|smartFailedCount
 ⚠️ **Что НЕ занимать:**
 - `SC` и `SD` — это дублирующие подписи SCL/SDA, дисплей уже сидит на них;
   пищалка на SC не зазвучит, а её ёмкость замылит фронты 400-килогерцовой шины
-- D3/D4 и D8 — boot-strap пины; свободны полностью D5, D6, D7
+- D3 — boot-strap (нажатая при сбросе уведет в bootloader); в рабочем режиме это кнопка **FLASH**,
+  мы повесили на неё листалку слайдов инфо (D3→GND кнопка нажата); во время работы это безопасно,
+  при reflash'е просто не держи её
+- D4 и D8 — тоже boot-strap, лучше не трогать; полностью свободны D5, D6, D7
 
 ## Установка серверной части
 
