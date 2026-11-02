@@ -690,14 +690,20 @@ static void setBothTargets(float tx, float ty, float tr) {
 #if SCENES_ON
 
 enum SceneName { SC_NONE = 0, SC_PEEK, SC_BOOK, SC_TIKTOK, SC_PC, SC_SELF, SC_COFFEE,
-                 SC_ALARM, SC_THINK, SC_SNACK, SC_RAIN, SC_BALL, SC_BIRD };
+                 SC_ALARM, SC_THINK, SC_SNACK, SC_RAIN, SC_BALL, SC_BIRD,
+                 SC_VACUUM, SC_COOK, SC_CHAT, SC_WALK, SC_SCARED, SC_MOVIE,
+                 SC_KNIT, SC_GARDEN, SC_GAME, SC_MUSIC, SC_PARCEL, SC_BUSY };
 
-static const uint8_t  SCENE_STEPS[13] = { 0, 4, 5, 5, 4, 5, 4, 5, 5, 5, 5, 5, 5 };
-static const uint16_t SCENE_STEP_MS[13] = { 0, 950, 830, 800, 900, 800, 900, 850, 850, 850, 850, 850, 850 };
+static const uint8_t  SCENE_STEPS[25] = { 0, 4, 5, 5, 4, 5, 4, 5, 5, 5, 5, 5, 5,
+                                          5, 5, 5, 5, 4, 5, 5, 5, 5, 5, 5, 5 };
+static const uint16_t SCENE_STEP_MS[25] = { 0, 950, 830, 800, 900, 800, 900, 850, 850, 850, 850, 850, 850,
+                                            850, 850, 850, 850, 850, 850, 850, 850, 850, 850, 850, 850 };
 static const unsigned long SCENE_GAP_MS     = 130000UL; // пауза между сценами ~2-4 мин
 static const unsigned long SCENE_GAP_VAR_MS = 150000UL;
 static const char* const SCENE_NAMES[] = { "none", "peek", "book", "tiktok", "pc", "self", "coffee",
-             "alarm", "think", "snack", "rain", "ball", "bird" };
+             "alarm", "think", "snack", "rain", "ball", "bird",
+             "vacuum", "cook", "chat", "walk", "scared", "movie",
+             "knit", "garden", "game", "music", "parcel", "busy" };
 
 static int  sceneName   = SC_NONE;
 static int  sceneStep   = 0;
@@ -1025,7 +1031,7 @@ static void sceneSetToken(const char* tok) {
                               dispMode = DM_EYES; lastFrame = 0;
                               if (nextInfoAt < millis() + 60000UL) nextInfoAt = millis() + 60000UL;
                               Serial.println(F("[SCENE] hat forced")); return; }
-  for (int i = SC_PEEK; i <= SC_BIRD; i++) {
+  for (int i = SC_PEEK; i <= SC_BUSY; i++) {
     if (!strcmp(tok, SCENE_NAMES[i])) {
       forceScene = i;
       sceneStart(i);
@@ -1087,7 +1093,7 @@ static bool sceneTick(unsigned long now) {
       sceneStart(forceScene);
       forceScene = -1;
     } else if (now >= nextSceneAt) {
-      sceneStart(random(1, SC_BIRD + 1));
+      sceneStart(random(1, SC_BUSY + 1));
     }
     if (sceneName == SC_NONE) return false;
   }
@@ -1150,6 +1156,59 @@ static void sceneTargets() {
     case SC_BIRD: {
       static const int8_t tp[5][2] = { { -5, -5 }, { 0, -5 }, { 5, -5 }, { 3, -2 }, { 0, 1 } };
       setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 7);
+      break; }
+    case SC_VACUUM: {
+      static const int8_t tp[5][2] = { { 0, 7 }, { -4, 0 }, { 5, 0 }, { -4, -1 }, { 0, 4 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 7);
+      break; }
+    case SC_COOK: {
+      static const int8_t tp[5][2] = { { 0, 7 }, { 0, 5 }, { -3, 4 }, { 3, 4 }, { 0, 0 } };
+      static const uint8_t tr[5] = { 7, 6, 6, 6, 9 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_CHAT: {
+      static const int8_t tp[5][2] = { { 0, 6 }, { -3, 1 }, { 3, 2 }, { 0, 4 }, { 0, 1 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 6);
+      break; }
+    case SC_WALK: {
+      static const int8_t tp[5][2] = { { 0, -6 }, { -5, 1 }, { 5, 1 }, { 0, -5 }, { 0, -3 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 7);
+      break; }
+    case SC_SCARED: {
+      static const int8_t tp[4][2] = { { 0, 0 }, { 0, 3 }, { -4, 2 }, { 3, 1 } };
+      static const uint8_t tr[4] = { 6, 9, 9, 6 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_MOVIE: {
+      static const int8_t tp[5][2] = { { 0, 6 }, { 0, 0 }, { 0, -2 }, { -3, 3 }, { 0, 2 } };
+      static const uint8_t tr[5] = { 6, 8, 9, 7, 6 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_KNIT: {
+      static const int8_t tp[5][2] = { { 0, 7 }, { -2, 5 }, { 2, 5 }, { -3, 4 }, { 0, 2 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 6);
+      break; }
+    case SC_GARDEN: {
+      static const int8_t tp[5][2] = { { 0, 5 }, { 0, 3 }, { 3, 0 }, { 3, -3 }, { 3, -2 } };
+      static const uint8_t tr[5] = { 6, 6, 6, 7, 9 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_GAME: {
+      static const int8_t tp[5][2] = { { 0, 0 }, { -5, -2 }, { 5, -2 }, { 0, 4 }, { 0, -2 } };
+      static const uint8_t tr[5] = { 7, 5, 5, 6, 9 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_MUSIC: {
+      static const int8_t tp[5][2] = { { 0, 0 }, { -5, -3 }, { 5, -3 }, { -4, 1 }, { 0, 0 } };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], 6);
+      break; }
+    case SC_PARCEL: {
+      static const int8_t tp[5][2] = { { 0, 6 }, { -4, 0 }, { 4, 0 }, { 0, -1 }, { 0, 1 } };
+      static const uint8_t tr[5] = { 6, 6, 6, 9, 8 };
+      setBothTargets(tp[sceneStep][0], tp[sceneStep][1], tr[sceneStep]);
+      break; }
+    case SC_BUSY: {
+      setBothTargets(0, -1, 5);
       break; }
     default: break;
   }
@@ -1332,6 +1391,285 @@ static void drawBirdProp(int step, unsigned long now) {
 
 // ---- v3.2 ���ᮢ騪� �業 ----
 
+// ---------- v3.4 props: бытовые занятия ----------
+
+static void drawBubble(int x, int y, int w, int h, int tail) {
+  display.fillRect(x, y, w, h, SSD1306_BLACK);
+  if (tail < 0) display.fillTriangle(x, y + h - 2, x, y + h + 2, x - 4, y + h, SSD1306_BLACK);
+  if (tail > 0) display.fillTriangle(x + w - 1, y + h - 2, x + w - 1, y + h + 2, x + w + 3, y + h, SSD1306_BLACK);
+}
+
+static void drawVacuumProp(int step, unsigned long now) {
+  int dy;
+  if (step == 0) {
+    float u = (float)stepElapsed(now) / 700.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(14.0f * (1.0f - u));
+  } else if (step == 4) {
+    float u = (float)stepElapsed(now) / 800.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(14.0f * u);
+  } else dy = 0;
+  if (dy < 14) {
+    display.fillRect(52, 53 + dy, 24, 9, SSD1306_BLACK);          // корпус-канистра
+    display.fillRect(56, 57 + dy, 12, 2, SSD1306_WHITE);          // вентиляция-негатив
+    display.fillRect(60, 50 + dy, 8, 3, SSD1306_BLACK);           // сопло
+  }
+  if (step >= 1 && step <= 3) {                                   // пылесосит: шланг качается
+    int sw = ((now / 260UL) & 1) ? 5 : -5;
+    qcurve(63, 50, 64 + sw, 42, 64 + sw * 2, 35, 2);
+    if (step <= 2) {                                              // пылинки сосёт
+      int up = (int)((now / 70UL) % 12UL);
+      display.drawPixel(64 + 4 - (up & 1) * 8, 49 - up, SSD1306_BLACK);
+      display.drawPixel(64 - 3 + (up & 1) * 6, 49 - (up + 5) % 7, SSD1306_BLACK);
+    }
+  }
+}
+
+static void drawPotProp(int step, unsigned long now) {
+  int dy;
+  if (step == 0) {
+    float u = (float)stepElapsed(now) / 600.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(12.0f * (1.0f - u));
+  } else if (step == 4) {
+    float u = (float)stepElapsed(now) / 800.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(12.0f * u);
+  } else dy = 0;
+  if (dy < 12) {
+    display.fillRect(53, 47 + dy, 22, 10, SSD1306_BLACK);         // кастрюля
+    display.fillRect(55, 52 + dy, 18, 3, SSD1306_WHITE);          // суп-негатив
+    drawLN(50, 49 + dy, 53, 49 + dy, 2);                          // ручки
+    drawLN(75, 49 + dy, 78, 49 + dy, 2);
+    if (step >= 1 && step <= 2) {                                 // пар
+      for (int i = 0; i < 3; i++) {
+        int py = 40 - i * 5 - (int)((now / 50UL + i) % 4UL);
+        display.fillCircle(58 + i * 6, py, 1, SSD1306_BLACK);
+      }
+    }
+    if (step == 2 || step == 3) {                                 // мешает ложкой
+      int t = ((now / 200UL) & 1) ? 4 : -4;
+      drawLN(64 + t, 38, 64, 49, 2);
+    }
+  }
+}
+
+static void drawChatProp(int step, unsigned long now) {
+  int dy;
+  if (step == 0) {
+    float u = (float)stepElapsed(now) / 600.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(12.0f * (1.0f - u));
+  } else if (step == 4) {
+    float u = (float)stepElapsed(now) / 800.0f; if (u > 1.0f) u = 1.0f;
+    drawBubble(50 - (int)(10.0f * u), 20, 12, 6, 0);              // диалог разлетается
+    drawBubble(64 + (int)(10.0f * u), 32, 12, 6, 0);
+    return;
+  } else dy = 0;
+  if (dy < 12) {
+    drawBubble(50, 18 + dy, 20, 9, -1);                           // входящее сверху
+    if (step == 0) {
+      for (int i = 0; i < 3; i++) display.fillCircle(54 + i * 5, 22 + dy, 1, SSD1306_WHITE);
+    } else {
+      display.fillRect(53, 21 + dy, 14, 2, SSD1306_WHITE);        // полоски «текста»
+      display.fillRect(53, 24 + dy, 8, 2, SSD1306_WHITE);
+    }
+  }
+  if (step >= 1 && step <= 3) {                                   // мой ответ снизу
+    int by = 44 + ((now / 240UL) & 1);
+    drawBubble(57, by, 18, 9, 1);
+    display.fillRect(59, by + 3, 13, 2, SSD1306_WHITE);
+    if (step == 3) spark(72, 12);                                 // новое сообщение!
+  }
+}
+
+static void drawWalkProp(int step, unsigned long now) {
+  display.fillCircle(64, 7, 3, SSD1306_BLACK);                    // солнышко
+  for (int i = 0; i < 4; i++) {                                   // лучи мигают
+    static const int8_t rx[4] = { -8, 8, -8, 8 };
+    static const int8_t ry[4] = { -8, -8, 8, 8 };
+    if ((((now / 280UL) + i) & 1) == 0)
+      drawLN(64 + rx[i] / 2, 7 + ry[i] / 2, 64 + rx[i], 7 + ry[i], 2);
+  }
+  if (step == 1) {                                                // деревце слева
+    display.fillCircle(56, 55, 6, SSD1306_BLACK);
+    drawLN(56, 60, 56, 64, 2);
+  } else if (step == 2) {                                         // прошли мимо - теперь справа
+    display.fillCircle(72, 55, 6, SSD1306_BLACK);
+    drawLN(72, 60, 72, 64, 2);
+  } else if (step == 3) {                                         // птица чирикнула
+    int wing = ((now / 140UL) & 1) ? 3 : -2;
+    display.fillTriangle(56, 16, 72, 16, 64, 20, SSD1306_BLACK);
+    display.drawLine(57, 16 + wing, 62, 16, SSD1306_BLACK);
+    display.drawLine(67, 16, 71, 16 + wing, SSD1306_BLACK);
+  }
+}
+
+static void drawScaredProp(int step, unsigned long now) {
+  if (step == 3) {                                                // паук сматывается вверх
+    float u = (float)stepElapsed(now) / 750.0f; if (u > 1.0f) u = 1.0f;
+    int len = (int)(30.0f * (1.0f - u));
+    if (len > 0) drawLN(64, 0, 64, len, 1);
+    return;
+  }
+  int sy = 18 + step * 6;                                         // нить+паук опускаются
+  int sw = (int)(3.5f * sinf(now * 0.024f));
+  drawLN(64, 0, 64, sy - 3, 1);                                   // нить
+  display.fillCircle(64 + sw, sy, 3, SSD1306_BLACK);              // тело
+  display.drawPixel(63 + sw, sy - 1, SSD1306_WHITE);              // глазок-негатив
+  for (int i = -2; i <= 2; i++) {
+    if (!i) continue;
+    drawLN(64 + sw + i, sy + 2, 64 + sw + i * 2, sy + 4, 1);      // лапки
+  }
+}
+
+static void drawMovieProp(int step, unsigned long now) {
+  int jx = (step == 2) ? ((now / 90UL) & 1) : 0;                  // дрожь от хоррора
+  int by = 40 + (step == 3 ? ((now / 140UL) & 1) : 0);
+  display.fillRect(54 + jx, by, 20, 17, SSD1306_BLACK);           // ведро
+  display.fillRect(56 + jx, by + 4, 16, 2, SSD1306_WHITE);        // полосы-негатив
+  display.fillRect(56 + jx, by + 10, 16, 2, SSD1306_WHITE);
+  for (int i = 0; i < 4; i++)                                     // шапка попкорна
+    display.fillCircle(57 + jx + i * 5 + (i & 1), by - 2, 1, SSD1306_BLACK);
+  if (step == 2 && ((now / 160UL) & 1)) {                         // молния в кадре!
+    display.fillTriangle(63, 8, 60, 16, 65, 14, SSD1306_BLACK);
+    display.fillTriangle(65, 14, 66, 20, 68, 12, SSD1306_BLACK);
+  }
+}
+
+static void drawKnitProp(int step, unsigned long now) {
+  int dy;
+  if (step == 0) {
+    float u = (float)stepElapsed(now) / 600.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(10.0f * (1.0f - u));
+  } else if (step == 4) {
+    float u = (float)stepElapsed(now) / 800.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(10.0f * u);
+  } else dy = 0;
+  if (dy < 10) {
+    display.fillCircle(64, 56 + dy, 5, SSD1306_BLACK);            // клубок
+    display.fillCircle(62 + (int)((now / 300UL) & 1) * 4, 54 + dy, 1, SSD1306_WHITE); // блик крутится
+    drawLN(60, 60 + dy, 68, 58 + dy, 1);                          // хвостик нити
+    if (step >= 1 && step <= 3) {                                 // спицы кыш-кыш
+      int tilt = ((now / 160UL) & 1) ? 3 : -3;
+      drawLN(52, 42 + dy, 56 + tilt, 48 + dy, 1);
+      drawLN(76, 42 + dy, 72 + tilt, 48 + dy, 1);
+      drawLN(56 + tilt, 48 + dy, 64, 53 + dy, 1);                 // нить от спицы к клубку
+    }
+  }
+}
+
+static void drawGardenProp(int step, unsigned long now) {
+  int tilt = (step >= 1 && step <= 3);                            // поливает
+  display.fillRect(50, 36, 13, 9, SSD1306_BLACK);                 // лейка
+  display.fillRect(52, 34, 9, 2, SSD1306_BLACK);
+  if (tilt) drawLN(63, 39 - tilt * 2, 70, 43, 2);                 // наклонённый носик
+  if (tilt) {                                                     // капли переливаются
+    int dp = (now / 110UL) % 6;
+    display.drawPixel(70, 45 + dp % 4, SSD1306_BLACK);
+    display.drawPixel(69, 45 + (dp + 2) % 4, SSD1306_BLACK);
+  }
+  int gh = (step == 0) ? 0 : (step == 1) ? 4 : (step == 2) ? 8 : 11;
+  if (gh) {                                                       // цветок растёт
+    int sway = (step >= 3) ? (int)(1.5f * sinf(now * 0.018f)) : 0;
+    drawLN(74, 62, 74 + sway, 62 - gh, 2);                        // стебель
+    if (step >= 2) drawLN(74, 55, 71, 52, 1);                     // листик
+    if (step >= 3) {
+      display.fillCircle(74 + sway, 61 - gh, 3, SSD1306_BLACK);   // бутон
+      display.fillCircle(74 + sway, 61 - gh, 1, SSD1306_WHITE);
+    }
+  }
+  if (step == 4) spark(70, 48);
+}
+
+static void drawGameProp(int step, unsigned long now) {
+  int dy;
+  if (step == 0) {
+    float u = (float)stepElapsed(now) / 600.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(12.0f * (1.0f - u));
+  } else if (step == 4) {
+    float u = (float)stepElapsed(now) / 800.0f; if (u > 1.0f) u = 1.0f;
+    dy = -(int)(8.0f * u);                                        // ПОБЕДА: геймпад вверх
+  } else dy = 0;
+  if (dy > -12) {
+    display.fillRoundRect(52, 46 + dy, 24, 11, 3, SSD1306_BLACK); // геймпад
+    int tilt = (step >= 1 && step <= 3) ? (((now / 240UL) & 1) ? 2 : -2) : 0;
+    display.fillCircle(58 + tilt, 51 + dy, 2, SSD1306_WHITE);     // стик туда-сюда
+    if (step >= 1 && step <= 3 && ((now / 130UL) & 1) == 0) {
+      display.fillRect(68, 48 + dy, 2, 2, SSD1306_WHITE);         // кнопки строчат
+      display.fillRect(72, 52 + dy, 2, 2, SSD1306_WHITE);
+    }
+  }
+  if (step == 4) spark(70, 38);
+}
+
+static void drawMusicProp(int step, unsigned long now) {
+  qcurve(16, 16, 64, -10, 112, 16, 2);                            // дуга наушников над головой
+  drawLN(16, 16, 16, 22, 2);                                      // чашки по краям
+  drawLN(112, 16, 112, 22, 2);
+  static const int8_t nx[3] = { 54, 64, 74 };                     // ноты прыгают в такт
+  int idx = (now / 240UL) % 3;
+  display.fillCircle(nx[idx], 27, 2, SSD1306_BLACK);
+  drawLN(nx[idx] + 2, 27, nx[idx] + 4, 21, 1);
+  int idx2 = (idx + 1) % 3;
+  display.fillCircle(nx[idx2], 34, 2, SSD1306_BLACK);
+  drawLN(nx[idx2] - 2, 34, nx[idx2] - 4, 40, 1);
+}
+
+static void drawBoxProp(int step, unsigned long now) {
+  int dy;
+  if (step == 0) {
+    float u = (float)stepElapsed(now) / 600.0f; if (u > 1.0f) u = 1.0f;
+    dy = (int)(14.0f * (1.0f - u));
+    display.fillRect(52, 46 + dy, 24, 14, SSD1306_BLACK);         // коробку принесли снизу
+    display.fillRect(62, 46 + dy, 4, 14, SSD1306_WHITE);          // лента-негатив
+    display.fillRect(52, 50 + dy, 24, 2, SSD1306_WHITE);
+  } else {
+    display.fillRect(52, 46, 24, 14, SSD1306_BLACK);
+    if (step == 1) {
+      int dx = ((now / 180UL) & 1) ? 1 : -1;                      // трясёт: что там?
+      display.fillRect(52, 46 + dx, 24, 14, SSD1306_BLACK);
+    } else if (step == 2) {
+      display.fillRect(62 + ((now / 170UL) & 1) * 20, 46, 4, 14, SSD1306_WHITE); // лента отпадает
+    } else {
+      display.fillRect(55, 43, 18, 3, SSD1306_BLACK);             // клапаны открыты
+      if (step >= 3) {
+        spark(56, 38); spark(72, 40);
+        if (((now / 200UL) & 1)) drawHeartV3(38.0f, 0.8f);        // внутри подарок!
+      }
+    }
+  }
+}
+
+static void drawBusyProp(int step, unsigned long now) {
+  int top;                                                        // занавес (0..64 - верхняя кромка)
+  if (step == 1) {
+    float u = (float)stepElapsed(now) / 650.0f; if (u > 1.0f) u = 1.0f;
+    top = 30 + (int)(34.0f * (1.0f - u));
+  } else if (step == 2 || step == 3) {
+    top = 30 + (int)(1.5f * sinf(now * 0.011f));                  // занавес "дышит" в ритме
+  } else if (step == 4) {
+    float u = (float)stepElapsed(now) / 750.0f; if (u > 1.0f) u = 1.0f;
+    top = 30 + (int)(34.0f * u);
+  } else {
+    top = 64;
+  }
+  if (top < 63) {
+    display.fillRect(48, top, 32, 64 - top, SSD1306_BLACK);       // занавес
+    display.drawFastVLine(56, top, 64 - top, SSD1306_WHITE);      // складки
+    display.drawFastVLine(72, top, 64 - top, SSD1306_WHITE);
+  }
+  if (step == 2) {                                                // сердечки-пульс
+    float p = 1.0f + 0.25f * sinf(now * 0.009f);
+    drawHeartV3(20.0f, 0.9f * p);
+    if ((now / 400UL) & 1) drawHeartV3(26.0f, 0.6f);
+  } else if (step == 3) {                                         // пик: сердце ещё больше
+    float p = 1.2f + 0.35f * sinf(now * 0.011f);
+    drawHeartV3(18.0f, p);
+    drawHeartV3(24.0f, 0.8f);
+    spark(58, 10); spark(70, 10);
+  } else if (step == 4) {                                         // занавес падает, сердце улетело
+    float u = (float)stepElapsed(now) / 750.0f; if (u > 1.0f) u = 1.0f;
+    if (u < 0.9f) drawHeartV3(20.0f - 14.0f * u, 0.9f);
+  }
+}
+
 static void sceneDrawAlarm(int lid, unsigned long now) {
   switch (sceneStep) {
     case 0:
@@ -1397,6 +1735,125 @@ static void sceneDrawBird(int lid, unsigned long now) {
   drawBirdProp(sceneStep, now);
 }
 
+static void sceneDrawVacuum(int lid, unsigned long now) {
+  brows = 0;
+  int lower = (sceneStep == 3) ? 6 : 0;                           // прищур от пыли
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, lower);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, lower);
+  drawVacuumProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawCook(int lid, unsigned long now) {
+  brows = (sceneStep >= 1 && sceneStep <= 2) ? 1 : 0;             // сосредоточен
+  int lower = (sceneStep == 3) ? 9 : 0;                           // пробует на вкус
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, lower);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, lower);
+  drawPotProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawChat(int lid, unsigned long now) {
+  brows = (sceneStep == 2 || sceneStep == 3) ? 1 : 0;             // хихикает
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawChatProp(sceneStep, now);
+  if (sceneStep == 3) drawHappyArcs(now);
+}
+
+static void sceneDrawWalk(int lid, unsigned long now) {
+  brows = 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawWalkProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawScared(int lid, unsigned long now) {
+  if (sceneStep >= 1 && sceneStep <= 2) brows = 2;                // ААА
+  else brows = (sceneStep == 3) ? 1 : 0;
+  int lower = (sceneStep == 2) ? 4 : 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, lower);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, lower);
+  drawScaredProp(sceneStep, now);
+}
+
+static void sceneDrawMovie(int lid, unsigned long now) {
+  static const uint8_t lw[5] = { 0, 0, 2, 8, 0 };                 // на хорроре вжимается
+  brows = (sceneStep == 2) ? 2 : (sceneStep == 3) ? 1 : 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, lw[sceneStep]);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, lw[sceneStep]);
+  drawMovieProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawKnit(int lid, unsigned long now) {
+  brows = (sceneStep >= 1 && sceneStep <= 3) ? 1 : 0;             // усердие
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawKnitProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawGarden(int lid, unsigned long now) {
+  brows = 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawGardenProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawGame(int lid, unsigned long now) {
+  brows = (sceneStep == 3) ? 2 : 0;                               // проигрыш - злится
+  int lower = (sceneStep == 3) ? 7 : 0;
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, lower);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, lower);
+  drawGameProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawMusic(int lid, unsigned long now) {
+  brows = 0;
+  if (sceneStep == 4) {
+    drawClosedEyes();                                             // оттанцевался - кайф
+  } else {
+    drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+    drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  }
+  drawMusicProp(sceneStep, now);
+}
+
+static void sceneDrawParcel(int lid, unsigned long now) {
+  brows = (sceneStep == 3) ? 1 : 0;                               // восторг открытия
+  drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, lid, 0);
+  drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, lid, 0);
+  drawBoxProp(sceneStep, now);
+  if (sceneStep == 4) drawHappyArcs(now);
+}
+
+static void sceneDrawBusy(int lid, unsigned long now) {
+  switch (sceneStep) {
+    case 0:
+      brows = 1;                                                  // хитрый прищур
+      drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, 4, 8);
+      drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, 4, 8);
+      break;
+    case 1:
+    case 2:
+    case 3:
+      brows = 0;
+      drawClosedEyes();                                           // блаженные жмурки
+      break;
+    default:
+      brows = 0;
+      drawEye(EYE1_X, EYE_OK_Y, EYE_OK_H, eyeL, 0, 0);
+      drawEye(EYE2_X, EYE_OK_Y, EYE_OK_H, eyeR, 0, 0);
+      drawHappyArcs(now);
+      break;
+  }
+  drawBusyProp(sceneStep, now);
+}
+
 static void sceneFrame(unsigned long now, int lid) {
   if (!oledOk) return;
   display.fillScreen(SSD1306_WHITE);
@@ -1414,6 +1871,18 @@ static void sceneFrame(unsigned long now, int lid) {
     case SC_RAIN:   sceneDrawRain(lid, now);   break;
     case SC_BALL:   sceneDrawBall(lid, now);   break;
     case SC_BIRD:   sceneDrawBird(lid, now);   break;
+    case SC_VACUUM: sceneDrawVacuum(lid, now); break;
+    case SC_COOK:   sceneDrawCook(lid, now);   break;
+    case SC_CHAT:   sceneDrawChat(lid, now);   break;
+    case SC_WALK:   sceneDrawWalk(lid, now);   break;
+    case SC_SCARED: sceneDrawScared(lid, now); break;
+    case SC_MOVIE:  sceneDrawMovie(lid, now);  break;
+    case SC_KNIT:   sceneDrawKnit(lid, now);   break;
+    case SC_GARDEN: sceneDrawGarden(lid, now); break;
+    case SC_GAME:   sceneDrawGame(lid, now);   break;
+    case SC_MUSIC:  sceneDrawMusic(lid, now);  break;
+    case SC_PARCEL: sceneDrawParcel(lid, now); break;
+    case SC_BUSY:   sceneDrawBusy(lid, now);   break;
     default: break;
   }
   display.display();
@@ -1971,7 +2440,7 @@ void monitorSetup() {
 #if SCENES_ON
   nextSceneAt = millis() + 30000UL;   // первая сцена "живого дня" ~через 30 сек
   Serial.println(F("[SCENE] demo via USB: send line E|<name>"));
-  Serial.println(F("[SCENE] names: peek | book | tiktok | pc | self | coffee | alarm | think | snack | rain | ball | bird | hat | wake | yawn | none"));
+  Serial.println(F("[SCENE] names: peek | book | tiktok | pc | self | coffee | alarm | think | snack | rain | ball | bird | vacuum | cook | chat | walk | scared | movie | knit | garden | game | music | parcel | busy | hat | wake | yawn | none"));
 #endif
 
   // короткий "я жив" бип - и проверка пищалки
