@@ -42,7 +42,8 @@ int           lastRtt     = -1;   // ms, -1 = нет ответа
 
 // ---------- ПИЩАЛКА (D5 = GPIO14, пассивный зуммер от ПК: GND + D5) ----------
 const uint8_t PIN_BUZZER = D5;  // D5 полностью свободный пин (без boot-strap нюансов)
-const uint8_t PIN_BTN      = D3;  // встроенная кнопка FLASH (GPIO0) — листалка слайдов</arg_key>
+const uint8_t PIN_BTN      = D3;  // встроенная кнопка FLASH (GPIO0) — листалка слайдов
+WiFiServer petServer(1337);       // v3.5: мини-HTTP "погладить": GET /pet, GET /card</arg_key>
 struct BeepStep { uint16_t freq; uint16_t ms; }; // freq=0 пауза; {0,0} конец (не цикл)
 static const BeepStep PATTERN_SIREN[]   = { {2200, 700}, {1500, 450} };                          // гипервизор: вой
 static const BeepStep PATTERN_VM[]      = { {1100,120},{0,110},{1100,120},{0,110},{1100,120},{0,120},{1600,160},{0,9000} }; // VM упала: 3 писка
@@ -50,8 +51,10 @@ static const BeepStep PATTERN_DISK[]   = { {700,150},{0,110},{700,150},{0,2900} 
 static const BeepStep PATTERN_RECOVER[] = { {1400,90},{0,50},{1900,140},{0,0} };                  // всё хорошо
 static const BeepStep PATTERN_BOOT[]    = { {2000,70},{0,40},{1600,90},{0,0} };                   // "я жив"
 const BeepStep PATTERN_UI[]      = { {1800,35},{0,0} };                                     // клик кнопки листалки
+const BeepStep PATTERN_PURR[]    = { {310,70},{0,50},{330,70},{0,50},{350,80},{0,80},{290,90},{0,0} };       // жмурки: мур-мур-мур
+const BeepStep PATTERN_BDAY[]    = { {1200,110},{0,60},{1500,110},{0,60},{1800,130},{0,70},{2300,190},{0,60},{1800,120},{0,0} }; // годовщина
 
-enum BeepMode { BM_NONE, BM_SIREN, BM_VM, BM_DISK, BM_RECOVER, BM_BOOT, BM_UI };
+enum BeepMode { BM_NONE, BM_SIREN, BM_VM, BM_DISK, BM_RECOVER, BM_BOOT, BM_UI, BM_PET, BM_CAKE };
 static BeepMode        beepMode = BM_NONE;
 static const BeepStep* beepPat  = nullptr;
 static uint8_t         beepLen = 0, beepIdx = 0;
@@ -65,6 +68,9 @@ static const char* beepName(BeepMode m) {
     case BM_DISK:    return "disk-alarm (storage offline / smart FAILED)";
     case BM_RECOVER: return "recover chirp";
     case BM_BOOT:    return "boot chirp";
+    case BM_UI:      return "ui click";
+    case BM_PET:     return "purr-purr";
+    case BM_CAKE:    return "birthday melody";
     default:         return "-";
   }
 }
@@ -171,7 +177,12 @@ static unsigned long wakeUntil = 0;    // E|wake: �� ᯠ�� 2 ����
 static unsigned long gHappyUntil = 0;  // ࠤ����-�㦪�: ����� �론���� N �� ��᫥ ����
 static uint8_t blinkSlow = 0;          // �����: blink ��������� � 240�� * k
 
+static unsigned long gPetUntil  = 0;   // v3.5: "погладили" - дужки + пульс-сердце
+static unsigned long gCakeUntil = 0;   // v3.5: годовщина аптайма - торт в просвете
+static unsigned long gCakeAt    = 0;   // момент запуска торта
+
 static void sstep(float& x, float& v, float tgt, float k, float d, float dt) {
+
   v += (k * (tgt - x) - d * v) * dt;
   if (v > 160.0f) v = 160.0f; else if (v < -160.0f) v = -160.0f;
   x += v * dt;
@@ -256,7 +267,10 @@ static char* nextTok(char*& p, char sep) {
 }
 
 // демо/серверные токены сцен ("peek|book|tiktok|pc|self|coffee|hat|none")
-static void sceneSetToken(const char* tok);
+static void sceneSetToken(const char* tok);   // v3.5: "pet"/"card"/"next" добавлены туда же
+static void pet();                            // v3.5: погладить - мурр + сердце
+static void uiCardNext(unsigned long now);    // v3.5: следующий слайд (кнопка/USB/HTTP)
+static void uiPlayRandom(unsigned long now);  // v3.5: удержание кнопки - случайная сцена
 
 static void parseStats() {
   memset(&g_srv, 0, sizeof(g_srv));
@@ -501,7 +515,7 @@ static void drawSlide(int idx) {
     case 1:  drawSlideServer(); break;
     case 2:  drawSlideVms(); break;
     case 3:  drawSlideDisks(); break;
-    default: showState(); break;  // слайд 0 - панель ОК/УПАЛ
+    default: showState(); break;  // инвариант: слайд 0 - панель ОК/УПАЛ
   }
 }
 
@@ -635,6 +649,8 @@ static bool hatShown();
 static void drawSantaHat();
 static void sleepReset();
 static void drawHappyArcs(unsigned long now);
+static void drawCakeV3(unsigned long now);   // v3.5: торт годовщины
+static void drawHeartV3(float hy, float hs); // v3.5: сердце для мурчания
 #endif
 
 static void eyesDrawFrame(int lid, int lower, int mouth) {
@@ -645,7 +661,10 @@ static void eyesDrawFrame(int lid, int lower, int mouth) {
   if (!trouble)       { ey = EYE_OK_Y; eh = EYE_OK_H; }
   else                { ey = EYE_BAD_Y; eh = EYE_BAD_H; }
   if (!trouble && (long)(gHappyUntil - millis()) > 0) {
-    drawHappyArcs(millis());                   // v3: ���� ��諠 - ����� �론����
+    drawHappyArcs(millis());
+    if (millis() < gPetUntil) {                // v3.5: погладили - сердце-мурр над головой
+      drawHeartV3(15.0f, 1.0f + 0.22f * sinf((float)millis() * 0.02f));
+    }
   } else {
     drawEye(EYE1_X, ey, eh, eyeL, lid, lower);
     drawEye(EYE2_X, ey, eh, eyeR, lid, lower);
@@ -669,6 +688,9 @@ static void eyesDrawFrame(int lid, int lower, int mouth) {
       display.setCursor(118, 9);
       display.print(F("z"));
     }
+  }
+  else if ((long)(gCakeUntil - millis()) > 0) {
+    drawCakeV3(millis());               // v3.5: годовщина аптайма - торт со свечкой
   }
 #if SCENES_ON
   else if (hatShown()) {
@@ -834,7 +856,29 @@ static void drawHeartV3(float hy, float hs) {
   display.fillTriangle(63 - rw, cy - 1, 65 + rw, cy - 1, 64, cy + tip, SSD1306_BLACK);
 }
 
-// ---- v3: ᬥ�騥�� ����� (���騥 �㦪�) ----
+// ---- v3.5: годовщина аптайма - торт поднимается в просвете, свечка мигает, потом задувание ----
+static void drawCakeV3(unsigned long now) {
+  unsigned long dt = now - gCakeAt;
+  int base;
+  if (dt < 1600UL)        base = 64 - (int)(18UL * dt / 1600UL);          // поднимается: 64 -> 46
+  else if (dt < 5600UL)   base = 46;                                     // стоит, свечка горит
+  else if (dt < 8000UL)   base = 46 + (int)(18UL * (dt - 5600UL) / 2400UL); // уезжает вниз
+  else { gCakeUntil = 0; return; }
+  if (base > 60) return;
+  display.fillRect(48, base + 10, 32, 4, SSD1306_BLACK);                  // тарелка
+  display.fillRect(50, base, 28, 10, SSD1306_BLACK);                      // корж
+  display.fillRect(52, base + 3, 24, 3, SSD1306_WHITE);                   // крем-негатив
+  display.fillRect(63, base - 5, 2, 5, SSD1306_BLACK);                    // свечка
+  if (dt < 5600UL) {                                                      // огонёк дрожит
+    int fx = 63 + (((now / 130UL) & 1UL) ? 0 : 1);
+    if (base > 10) display.fillRect(fx, base - 9, 2, 4, SSD1306_BLACK);
+  } else if (((now / 170UL) & 1UL)) {                                     // задули: искры-брызги
+    display.drawPixel(57, base - 5, SSD1306_BLACK);
+    display.drawPixel(70, base - 7, SSD1306_BLACK);
+    display.drawPixel(66, base - 9, SSD1306_BLACK);
+  }
+}
+// ---- v3: happy arcs ----
 static void drawHappyArcs(unsigned long now) {
   int dy = (int)roundf(0.8f * sinf(now * 0.0031f));
   arcThin(EYE1_X + 15, 32 + dy, 10, 8, 200, 340, 3);
@@ -1030,15 +1074,11 @@ static void sceneSetToken(const char* tok) {
   }
   if (!strcmp(tok, "none")) { forceHat = false; sceneClear(); Serial.println(F("[SCENE] cleared")); return; }
 if (!strcmp(tok, "card") || !strcmp(tok, "next")) {
-  unsigned long _now = millis();
-  if (state != ST_OK) { Serial.println(F("[BTN] suppressed: alarm")); return; }
-  if (dispMode == DM_EYES) { dispMode = DM_SLIDES; slideIdx = 0; slideCount = g_srv.valid ? 4 : 2; }
-  else { slideIdx++; if (slideIdx >= slideCount) slideIdx = 0; }
-  drawSlide(slideIdx); slideUntil = _now + SLIDE_MS;
-  if (!beepPat) beepStart(BM_UI, PATTERN_UI, sizeof(PATTERN_UI) / sizeof(BeepStep), false);
+  uiCardNext(millis());
   Serial.println(F("[BTN] card"));
   return;
 }
+if (!strcmp(tok, "pet"))   { pet(); return; }
   if (!strcmp(tok, "hat"))  { forceScene = -1; forceHat = true; sceneName = SC_NONE;
                               dispMode = DM_EYES; lastFrame = 0;
                               if (nextInfoAt < millis() + 60000UL) nextInfoAt = millis() + 60000UL;
@@ -1078,6 +1118,45 @@ static void serialCmdTick() {
     if (serialxLen < 23) serialxBuf[serialxLen++] = c;
     else serialxLen = 24;   // переполнение - строку не рассматриваем
   }
+}
+
+// -----------------------------------------------------------------------
+// v3.5: "погладить" (дужки + сердце + мурчание) и листалка слайдов
+// -----------------------------------------------------------------------
+static void pet() {
+  unsigned long now = millis();
+  gPetUntil    = now + 2600UL;
+  gHappyUntil  = now + 2600UL;
+  beepStart(BM_PET, PATTERN_PURR, sizeof(PATTERN_PURR) / sizeof(BeepStep), false);
+  Serial.println(F("[PET] purr-purr :3"));
+}
+
+static void uiCardNext(unsigned long now) {
+  if (state != ST_OK) { Serial.println(F("[BTN] suppressed: alarm")); return; }
+  if (dispMode == DM_EYES) {
+    dispMode = DM_SLIDES;
+    slideIdx = 0;
+    slideCount = g_srv.valid ? 4 : 2;
+  } else {
+    slideIdx++;
+    if (slideIdx >= slideCount) slideIdx = 0;
+  }
+  drawSlide(slideIdx);
+  slideUntil = now + SLIDE_MS;
+  if (!beepPat) beepStart(BM_UI, PATTERN_UI, sizeof(PATTERN_UI) / sizeof(BeepStep), false);
+}
+
+static void uiPlayRandom(unsigned long now) {
+  (void)now;
+  int s = (int)random(1, SC_BUSY + 1);          // только "бытовые" сцены
+  Serial.print(F("[BTN] hold-to-play: "));
+  Serial.println(SCENE_NAMES[s]);
+  forceScene = s;
+  sceneStart(s);
+  forceScene = -1;             // одноразовый: потом живёт обычная жизнь
+  dispMode = DM_EYES;          // из слайдов - в глаза к сцене
+  lastFrame = 0;
+  if (nextInfoAt < millis() + 60000UL) nextInfoAt = millis() + 60000UL;
 }
 
 // прогресс шага активной сцены: true = кадр сцены играет
@@ -2442,6 +2521,8 @@ void monitorSetup() {
   } else {
     Serial.println(F("[WIFI] not connected yet, will retry"));
   }
+  petServer.begin();
+  Serial.println(F("[PET] mini http on :1337  GET /pet | GET /card"));
 
   // при старте: панель статуса сразу, глаза, через 12 сек - первое слайд-шоу
   dispMode = DM_EYES;
@@ -2455,7 +2536,7 @@ void monitorSetup() {
 #if SCENES_ON
   nextSceneAt = millis() + 30000UL;   // первая сцена "живого дня" ~через 30 сек
   Serial.println(F("[SCENE] demo via USB: send line E|<name>"));
-  Serial.println(F("[SCENE] names: peek | book | tiktok | pc | self | coffee | alarm | think | snack | rain | ball | bird | vacuum | cook | chat | walk | scared | movie | knit | garden | game | music | parcel | busy | hat | wake | yawn | none"));
+  Serial.println(F("[SCENE] names: peek | book | tiktok | pc | self | coffee | alarm | think | snack | rain | ball | bird | vacuum | cook | chat | walk | scared | movie | knit | garden | game | music | parcel | busy | hat | wake | yawn | none | pet | card"));
 #endif
 
   // короткий "я жив" бип - и проверка пищалки
@@ -2466,25 +2547,47 @@ static void buttonTick(unsigned long now) {
   static unsigned long btnDownMs = 0;
   static bool btnStable = true;
   static bool btnRawLast = true;
+  static bool btnHeldFired = false;
   bool raw = (digitalRead(PIN_BTN) == HIGH);  // HIGH = не нажато (подтяжка)
-  if (raw != btnRawLast) { btnRawLast = raw; btnDownMs = now; }
-  if ((now - btnDownMs) < 60UL || raw == btnStable) return;
-  btnStable = raw;
-  if (raw == false) {                               // фронт LOW -> нажатие
-    Serial.println(F("[BTN] FLASH press"));
-    if (state != ST_OK) return;                     // тревога важнее: не уводим с экрана алерта
-    if (dispMode == DM_EYES) {
-      dispMode = DM_SLIDES;
-      slideIdx = 0;
-      slideCount = g_srv.valid ? 4 : 2;
-    } else {
-      slideIdx++;
-      if (slideIdx >= slideCount) slideIdx = 0;
-    }
-    drawSlide(slideIdx);
-    slideUntil = now + SLIDE_MS;
-    if (!beepPat) beepStart(BM_UI, PATTERN_UI, sizeof(PATTERN_UI) / sizeof(BeepStep), false);
+  if (raw != btnRawLast) {
+    btnRawLast = raw; btnDownMs = now;
+    if (!raw) btnHeldFired = false;
   }
+  if ((now - btnDownMs) < 60UL || raw == btnStable) {
+    // удержание LOW >= 1300 мс: "поиграй со мной" - случайная бытовая сцена
+    if (raw == false && btnStable == false && !btnHeldFired && (now - btnDownMs) >= 1300UL) {
+      btnHeldFired = true;
+      uiPlayRandom(now);
+    }
+    return;
+  }
+  btnStable = raw;
+  if (raw == true && !btnHeldFired) uiCardNext(now);   // отпускание = короткий клик: следующий слайд
+}
+
+// ---------- v3.5: мини-HTTP :1337 - GET /pet (мурчание), GET /card (листалка) ----------
+static void petServerTick() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  WiFiClient c = petServer.available();
+  if (!c) return;
+  c.setTimeout(120);
+  String req = c.readStringUntil('\n');
+  unsigned long t0 = millis();                         // осушаем остаток запроса
+  while (c.available() && millis() - t0 < 60UL) c.read();
+  bool isPet  = req.indexOf("GET /pet") >= 0;
+  bool isCard = req.indexOf("GET /card") >= 0;
+  if (isPet) {
+    pet();
+    c.print(F("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\npurrr-purrr :3\n"));
+  } else if (isCard) {
+    Serial.println(F("[BTN] http card"));
+    uiCardNext(millis());
+    c.print(F("HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\ncard\n"));
+  } else {
+    c.print(F("HTTP/1.0 404 Not Found\r\nContent-Type: text/plain\r\n\r\n:/\n"));
+  }
+  c.flush();
+  c.stop();
 }
 
 void monitorLoop() {
@@ -2494,7 +2597,8 @@ void monitorLoop() {
   serialCmdTick();   // демо/серверные команды "E|<token>" по USB (без ресета: DtrEnable=false)
 #endif
 
-  buttonTick(now);    // кнопка FLASH (D3/GPIO0) — листаем слайды инфо
+  buttonTick(now);    // кнопка FLASH (D3/GPIO0) — клик: следующий слайд, удержание 1.3 с: случайная сцена
+  petServerTick();    // v3.5: GET /pet (погладить) и GET /card на :1337
 
   // ---- ЭКРАН: инверсия (ночью - тёмный экран; при аварии - мигание) ----
   bool wantInvert;
@@ -2542,6 +2646,21 @@ void monitorLoop() {
   if (WiFi.status() == WL_CONNECTED && now - lastPingAt >= PING_INTERVAL) {
     doPing();
     if (state == ST_OK) statsFetch(); // гипервизор жив - обновляем VM/CPU (каждую минуту)
+    // v3.5: еженедельный "день рождения" аптайма (7/14/21... сутки) - торт + мелодия
+    static unsigned long srvUdDay = 0;
+    static bool          srvUdValid = false;
+    if (state == ST_OK && g_srv.valid && !nightMode && !g_srv.backup) {
+      unsigned long ud = g_srv.uptime / 86400UL;
+      if (srvUdValid && ud > srvUdDay && ud >= 7 && ud % 7 == 0) {
+        gCakeAt    = millis();
+        gCakeUntil = gCakeAt + 8200UL;
+        beepStart(BM_CAKE, PATTERN_BDAY, sizeof(PATTERN_BDAY) / sizeof(BeepStep), false);
+        Serial.print(F("[CAKE] birthday: day "));
+        Serial.println(ud);
+      }
+      srvUdDay = ud;
+      srvUdValid = true;
+    }
     if (dispMode == DM_SLIDES) drawSlide(slideIdx);
   }
 
