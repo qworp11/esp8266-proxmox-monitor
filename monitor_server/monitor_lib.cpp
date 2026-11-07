@@ -75,6 +75,20 @@ static const char* beepName(BeepMode m) {
   }
 }
 
+// v3.5a: расшифровка статуса Wi-Fi (диагностика «не привязывается»)
+static const char* wlName(int s) {
+  switch (s) {
+    case 0: return "idle";
+    case 1: return "NO SSID (network not visible)";
+    case 2: return "scan done";
+    case 3: return "connected";
+    case 4: return "CONNECT FAILED (auth/assoc)";
+    case 5: return "connection lost";
+    case 6: return "disconnected";
+    default: return "?";
+  }
+}
+
 static void beepStart(BeepMode m, const BeepStep* p, uint8_t len, bool loop) {
   if (beepPat == p && beepMode == m) return; // не дёргать один паттерн бесконечно
   analogWrite(PIN_LED, 255); // LED замолкает на время пищалки (общий таймер 1)
@@ -2519,7 +2533,11 @@ void monitorSetup() {
     Serial.print(WiFi.RSSI());
     Serial.println(F(" dBm"));
   } else {
-    Serial.println(F("[WIFI] not connected yet, will retry"));
+    Serial.print(F("[WIFI] not connected yet, wl_status="));
+    Serial.print(WiFi.status());
+    Serial.print(F(" ("));
+    Serial.print(wlName(WiFi.status()));
+    Serial.println(F(")"));
   }
   petServer.begin();
   Serial.println(F("[PET] mini http on :1337  GET /pet | GET /card"));
@@ -2636,7 +2654,11 @@ void monitorLoop() {
   if (WiFi.status() != WL_CONNECTED) {
     if (now - lastWifiTry >= WIFI_RETRY_MS) {
       lastWifiTry = now;
-      Serial.println(F("[WIFI] reconnect attempt"));
+      Serial.print(F("[WIFI] reconnect attempt, wl_status="));
+      Serial.print(WiFi.status());
+      Serial.print(F(" ("));
+      Serial.print(wlName(WiFi.status()));
+      Serial.println(F(")"));
       WiFi.reconnect();
     }
     if (state != ST_NOWIFI) setStatus(ST_NOWIFI);
